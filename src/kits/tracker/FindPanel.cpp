@@ -1955,6 +1955,7 @@ FindPanel::AddVolumes(BMenu* menu)
 
 typedef std::pair<entry_ref, uint32> EntryWithDate;
 
+//sorting function for the EntryWithDate
 static int
 SortByDatePredicate(const EntryWithDate* entry1, const EntryWithDate* entry2)
 {
@@ -1963,7 +1964,7 @@ SortByDatePredicate(const EntryWithDate* entry1, const EntryWithDate* entry2)
 }
 
 
-struct AddOneRecentParams {
+struct AddOneRecentParams { //Struct that is used to send the parameters to the AddOneRecentItems Function.
 	BMenu* menu;
 	const BMessenger* target;
 	uint32 what;
@@ -1973,15 +1974,15 @@ struct AddOneRecentParams {
 static const entry_ref*
 AddOneRecentItem(const entry_ref* ref, void* castToParams)
 {
-	AddOneRecentParams* params = (AddOneRecentParams*)castToParams;
+	AddOneRecentParams* params = (AddOneRecentParams*)castToParams; //static typecasting as we already know the data type.
 
-	BMessage* message = new BMessage(params->what);
-	message->AddRef("refs", ref);
+	BMessage *message = new BMessage(params->what); // All the clicks have the same message sent to the BWindow in order to be recognized as a click in this menu. What differs is the data.
+	message->AddRef("refs", ref); //Stores the reference inside the BMessage
 
-	char type[B_MIME_TYPE_LENGTH];
+	char type[B_MIME_TYPE_LENGTH]; //Used to store the type of the entry_ref
 	BNode node(ref);
 	BNodeInfo(&node).GetType(type);
-	BMenuItem* item = new IconMenuItem(ref->name, message, type);
+	BMenuItem *item = new IconMenuItem(ref->name, message, type); //Adds an entry to the BMenu that has an icon depending on the MIME-Type.
 	item->SetTarget(*params->target);
 	params->menu->AddItem(item);
 
@@ -1996,15 +1997,17 @@ FindPanel::AddRecentQueries(BMenu* menu, bool addSaveAsItem,
 	BObjectList<entry_ref> templates(10, true);
 	BObjectList<EntryWithDate> recentQueries(10, true);
 
+	//EntryWithDate is simply just a pair<entry_ref,uint32>
+
 	// find all the queries on all volumes
-	BVolumeRoster roster;
-	BVolume volume;
-	roster.Rewind();
+	BVolumeRoster roster; //This gives an easy-to-use interface for going through the volumes
+	BVolume volume; //This is used to store the volume returned by the BVolumeRoster's method
+	roster.Rewind(); //Rewinds the interface to the first volume present on the disk
 	while (roster.GetNextVolume(&volume) == B_OK) {
 		if (volume.IsPersistent() && volume.KnowsQuery()
-			&& volume.KnowsAttr()) {
-			BQuery query;
-			query.SetVolume(&volume);
+			&& volume.KnowsAttr()) { //These check whether Queries, Attributes, and Persistence is enabled on the disk.
+			BQuery query; //Used to store the query that will be used to find all the recent queries.
+			query.SetVolume(&volume); //Function to set the volume of the query.
 			query.SetPredicate("_trk/recentQuery == 1");
 			if (query.Fetch() != B_OK)
 				continue;
@@ -2012,14 +2015,14 @@ FindPanel::AddRecentQueries(BMenu* menu, bool addSaveAsItem,
 			entry_ref ref;
 			while (query.GetNextRef(&ref) == B_OK) {
 				// ignore queries in the Trash
-				if (FSInTrashDir(&ref))
+				if (FSInTrashDir(&ref)) 
 					continue;
 
-				char type[B_MIME_TYPE_LENGTH];
-				BNode node(&ref);
-				BNodeInfo(&node).GetType(type);
+				char type[B_MIME_TYPE_LENGTH]; //B_MIME_TYPE_LENGTH is a BE constant that stores the length of any MIME type on the Operating System
+				BNode node(&ref); //Sets up a BNode from the entry_ref
+				BNodeInfo(&node).GetType(type); //BNodeInfo allows you to access file-type metadata from the file associated with the BNode.
 
-				if (strcasecmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0)
+				if (strcasecmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0) //checks whether the file is a template
 					templates.AddItem(new entry_ref(ref));
 				else {
 					uint32 changeTime;
@@ -2029,6 +2032,8 @@ FindPanel::AddRecentQueries(BMenu* menu, bool addSaveAsItem,
 
 					recentQueries.AddItem(new EntryWithDate(ref, changeTime));
 				}
+
+				//The time of the query is stored in the metadata of the query file as an attribute. This attribute is read into a variable and a new "EntryWithDate" object is created with this attribute's data as well as the entry_ref.
 			}
 		}
 	}
@@ -2037,11 +2042,11 @@ FindPanel::AddRecentQueries(BMenu* menu, bool addSaveAsItem,
 	recentQueries.SortItems(SortByDatePredicate);
 
 	// but all templates
-	AddOneRecentParams params;
+	AddOneRecentParams params; //This struct is simply used to pass the parameters to the function pointer.
 	params.menu = menu;
 	params.target = target;
 	params.what = what;
-	templates.EachElement(AddOneRecentItem, &params);
+	templates.EachElement(AddOneRecentItem, &params); // Adds all the template files out of the BObjectList.
 
 	int32 count = recentQueries.CountItems();
 	if (count > 10) {
