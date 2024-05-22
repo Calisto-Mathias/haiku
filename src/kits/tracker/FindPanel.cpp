@@ -716,7 +716,7 @@ FindPanel::FindPanel(BFile* node, FindWindow* parent, bool fromTemplate,
 	bool editTemplateOnly)
 	:
 	BView("MainView", B_WILL_DRAW),
-	fMode(kByNameItem),
+	fMode(kByNameItem), //Search Mode
 	fAttrGrid(NULL),
 	fDraggableIcon(NULL)
 {
@@ -755,11 +755,11 @@ FindPanel::FindPanel(BFile* node, FindWindow* parent, bool fromTemplate,
 
 	// add popup for volume list
 	fVolMenu = new BPopUpMenu("", false, false);
-	BMenuField* volumeField = new BMenuField("", B_TRANSLATE("On"), fVolMenu);
-	volumeField->SetDivider(volumeField->StringWidth(volumeField->Label()) + 8);
+	BMenuField* volumeField = new BMenuField("", B_TRANSLATE("On"), fVolMenu); //A BMenuField is simply just a pop up menu that contains a label.
+	volumeField->SetDivider(volumeField->StringWidth(volumeField->Label()) + 8); //Sets the divider based on the length of the label (similar to the way described in the reference book).
 	AddVolumes(fVolMenu);
 
-	if (!editTemplateOnly) {
+	if (!editTemplateOnly) { //Code to allow for dragging and dropping of the search query.
 		BPoint draggableIconOrigin(0, 0);
 		BMessage dragNDropMessage(B_SIMPLE_DATA);
 		dragNDropMessage.AddInt32("be:actions", B_COPY_TARGET);
@@ -793,7 +793,7 @@ FindPanel::FindPanel(BFile* node, FindWindow* parent, bool fromTemplate,
 		B_TRANSLATE("Temporary"), NULL);
 	fTemporaryCheck->SetValue(B_CONTROL_ON);
 
-	BView* checkboxGroup = BLayoutBuilder::Group<>(B_HORIZONTAL)
+	BView* checkboxGroup = BLayoutBuilder::Group<>(B_HORIZONTAL) //Builds the checkbox view.
 		.Add(fSearchTrashCheck)
 		.Add(fTemporaryCheck)
 		.View();
@@ -832,8 +832,8 @@ FindPanel::FindPanel(BFile* node, FindWindow* parent, bool fromTemplate,
 	BBox* queryControls = new BBox("Box");
 	queryControls->SetBorder(B_NO_BORDER);
 
-	BBox* queryBox = new BBox("Outer Controls");
-	queryBox->SetLabel(new BMenuField("RecentQueries", NULL, fRecentQueries));
+	BBox* queryBox = new BBox("Outer Controls"); //This is the BBox containing the upper part of Find Panel
+	queryBox->SetLabel(new BMenuField("RecentQueries", NULL, fRecentQueries));are
 
 	BGroupView* queryBoxView = new BGroupView(B_VERTICAL,
 		B_USE_DEFAULT_SPACING);
@@ -952,36 +952,40 @@ FindPanel::AttachedToWindow()
 void
 FindPanel::ResizeMenuField(BMenuField* menuField)
 {
-	BSize size;
-	menuField->GetPreferredSize(&size.width, &size.height);
+	BSize size; //Initializes a BSize variable that is used to store the preferred size of the menuField.
+	menuField->GetPreferredSize(&size.width, &size.height); //Gets the preferred size of this menu field.
 
-	BMenu* menu = menuField->Menu();
+	BMenu* menu = menuField->Menu(); //Gets the Menu that is associated with the MenuField.
 
-	float padding = 0.0f;
-	float width = 0.0f;
+	float padding = 0.0f; //Sets a default padding value of nil.
+	float width = 0.0f; //Setting a null width to begin with.
 
-	BMenuItem* markedItem = menu->FindMarked();
-	if (markedItem != NULL) {
+	//This section of code checks the currently marked item and calculates the padding required between this
+
+	BMenuItem* markedItem = menu->FindMarked(); //Finds the marked item in this BMenu
+	if (markedItem != NULL) { //If there is such a ticked menu field.
 		if (markedItem->Submenu() != NULL) {
-			BMenuItem* markedSubItem = markedItem->Submenu()->FindMarked();
-			if (markedSubItem != NULL && markedSubItem->Label() != NULL) {
+			BMenuItem* markedSubItem = markedItem->Submenu()->FindMarked(); //Finds the ticked option in a submenu.
+			if (markedSubItem != NULL && markedSubItem->Label() != NULL) { //Check if such an option exists.
 				float labelWidth
-					= menuField->StringWidth(markedSubItem->Label());
-				padding = size.width - labelWidth;
+					= menuField->StringWidth(markedSubItem->Label()); //Get the width of this label
+				padding = size.width - labelWidth; 
 			}
 		} else if (markedItem->Label() != NULL) {
 			float labelWidth = menuField->StringWidth(markedItem->Label());
-			padding = size.width - labelWidth;
+			padding = size.width - labelWidth; //Sets the padding to the difference between the two widths == Space between the two elements.
 		}
 	}
 
-	for (int32 index = menu->CountItems(); index-- > 0; ) {
-		BMenuItem* item = menu->ItemAt(index);
-		if (item->Label() != NULL)
+	//This section of code finds the label with the maximum width in all the entries.
+
+	for (int32 index = menu->CountItems(); index-- > 0; ) { //Loops through all the menus that are present in this menufield.
+		BMenuItem* item = menu->ItemAt(index); //Get's the item at this index.
+		if (item->Label() != NULL) //Gets it's label and checks whether this entry's label width is bigger than the current maximum size.
 			width = std::max(width, menuField->StringWidth(item->Label()));
 
 		BMenu* submenu = item->Submenu();
-		if (submenu != NULL) {
+		if (submenu != NULL) { //If it is a submenu, then loop through all its entries.
 			for (int32 subIndex = submenu->CountItems(); subIndex-- > 0; ) {
 				BMenuItem* subItem = submenu->ItemAt(subIndex);
 				if (subItem->Label() == NULL)
@@ -993,9 +997,9 @@ FindPanel::ResizeMenuField(BMenuField* menuField)
 		}
 	}
 
-	float maxWidth = be_control_look->DefaultItemSpacing() * 20;
-	size.width = std::min(width + padding, maxWidth);
-	menuField->SetExplicitSize(size);
+	float maxWidth = be_control_look->DefaultItemSpacing() * 20; //Set's a maximum width for each control.
+	size.width = std::min(width + padding, maxWidth); //Calculates which of the two options are minimum.
+	menuField->SetExplicitSize(size); //Sets the width of this menu to exactly this width.
 }
 
 
