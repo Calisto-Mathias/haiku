@@ -134,14 +134,14 @@ static const char* operatorLabels[] = {
 
 namespace BPrivate {
 
-class MostUsedNames {
+class MostUsedNames { //This is a class that allows us to show a menu consisting of the most used filenames that the user uses.
 public:
 								MostUsedNames(const char* fileName, const char* directory,
-									int32 maxCount = 5);
-								~MostUsedNames();
+									int32 maxCount = 5); //
+								~MostUsedNames(); //Destructor
 
-			bool				ObtainList(BList* list);
-			void				ReleaseList();
+			bool				ObtainList(BList* list); //This is an output parameterized function prototype.
+			void				ReleaseList(); //
 
 			void 				AddName(const char*);
 
@@ -149,18 +149,18 @@ protected:
 			struct list_entry {
 				char* name;
 				int32 count;
-			};
+			}; //Each Entry consists of a name and a count. This is the list_entry that is added into the BList which is a container that contains void pointers.
 
-		static int CompareNames(const void* a, const void* b);
+		static int CompareNames(const void* a, const void* b); // This is a comparison function that is used to sort the names [Presumably according to alphabetical order]
 		void LoadList();
 		void UpdateList();
 
 		const char*	fFileName;
 		const char*	fDirectory;
 		bool		fLoaded;
-		mutable Benaphore fLock;
-		BList		fList;
-		int32		fCount;
+		mutable Benaphore fLock; // This is used to create synchronisation locks on the list.
+		BList		fList; //This is the BList that stores a list of Most Used Names.
+		int32		fCount; //This stores the number of most used fileTypes.
 };
 
 
@@ -720,8 +720,8 @@ FindPanel::FindPanel(BFile* node, FindWindow* parent, bool fromTemplate,
 	fAttrGrid(NULL),
 	fDraggableIcon(NULL)
 {
-	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-	SetLowUIColor(ViewUIColor());
+	SetViewUIColor(B_PANEL_BACKGROUND_COLOR); // Sets the background of the view.
+	SetLowUIColor(ViewUIColor()); //
 
 	uint32 initialMode = InitialMode(node);
 
@@ -732,7 +732,7 @@ FindPanel::FindPanel(BFile* node, FindWindow* parent, bool fromTemplate,
 
 	// add popup for mime types
 	fMimeTypeMenu = new BPopUpMenu("MimeTypeMenu");
-	fMimeTypeMenu->SetRadioMode(false);
+	fMimeTypeMenu->SetRadioMode(false); //Radio Mode only enables one option from the menu to be Set
 	AddMimeTypesToMenu();
 
 	fMimeTypeField = new BMenuField("MimeTypeMenu", "", fMimeTypeMenu);
@@ -1792,15 +1792,15 @@ void AddSubtype(BString& text, const BMimeType& type)
 bool
 FindPanel::AddOneMimeTypeToMenu(const ShortMimeInfo* info, void* castToMenu)
 {
-	BPopUpMenu* menu = static_cast<BPopUpMenu*>(castToMenu);
+	BPopUpMenu* menu = static_cast<BPopUpMenu*>(castToMenu); //Static cast with no compatibility checking.
 
-	BMimeType type(info->InternalName());
+	BMimeType type(info->InternalName()); //InternalName is a function that returns the internal MIME-Type String
 	BMimeType super;
 	type.GetSupertype(&super);
 	if (super.InitCheck() < B_OK)
 		return false;
 
-	BMenuItem* superItem = menu->FindItem(super.Type());
+	BMenuItem* superItem = menu->FindItem(super.Type()); //Finds the Super Type entry in the Menu.
 	if (superItem != NULL) {
 		BMessage* message = new BMessage(kMIMETypeItem);
 		message->AddString("mimetype", info->InternalName());
@@ -1831,27 +1831,27 @@ FindPanel::AddOneMimeTypeToMenu(const ShortMimeInfo* info, void* castToMenu)
 void
 FindPanel::AddMimeTypesToMenu()
 {
-	BMessage* itemMessage = new BMessage(kMIMETypeItem);
-	itemMessage->AddString("mimetype", kAllMimeTypes);
+	BMessage* itemMessage = new BMessage(kMIMETypeItem); //Message Constant that is added to the message.
+	itemMessage->AddString("mimetype", kAllMimeTypes); //the "mimetype" attribute stores the information about which mime type itcontains. This is done using the AddString function.
 
 	IconMenuItem* firstItem = new IconMenuItem(
 		B_TRANSLATE("All files and folders"), itemMessage,
-		static_cast<BBitmap*>(NULL));
+		static_cast<BBitmap*>(NULL)); //Need to create documentation for this class.
 	MimeTypeMenu()->AddItem(firstItem);
 	MimeTypeMenu()->AddSeparatorItem();
 
 	// add recent MIME types
 
-	TTracker* tracker = dynamic_cast<TTracker*>(be_app);
-	ASSERT(tracker != NULL);
+	TTracker* tracker = dynamic_cast<TTracker*>(be_app); //Down-Casting the be_app pointer which refers to the instance of this application.
+	ASSERT(tracker != NULL); //This is only for the debug build
 
-	BList list;
+	BList list; //This piece of code is used to add the most used MIME types to the menu.
 	if (tracker != NULL && gMostUsedMimeTypes.ObtainList(&list)) {
 		int32 count = 0;
 		for (int32 index = 0; index < list.CountItems(); index++) {
-			const char* name = (const char*)list.ItemAt(index);
+			const char* name = (const char*)list.ItemAt(index); // This retrieves the name of the MIME-Type
 
-			MimeTypeList* mimeTypes = tracker->MimeTypes();
+			MimeTypeList* mimeTypes = tracker->MimeTypes(); //This retrieves the List of MIME-Types.
 			if (mimeTypes != NULL) {
 				const ShortMimeInfo* info = mimeTypes->FindMimeType(name);
 				if (info == NULL)
@@ -1870,14 +1870,14 @@ FindPanel::AddMimeTypesToMenu()
 		gMostUsedMimeTypes.ReleaseList();
 	}
 
-	// add MIME type tree list
+	// add MIME type tree listso what
 
 	BMessage types;
-	if (BMimeType::GetInstalledSupertypes(&types) == B_OK) {
+	if (BMimeType::GetInstalledSupertypes(&types) == B_OK) { // Reads the supertypes installed in the Haiku MIME Database.
 		const char* superType;
-		int32 index = 0;
+		int32 insitdex = 0;
 
-		while (types.FindString("super_types", index++, &superType) == B_OK) {
+		while (types.FindString("super_types", index++, &superType) == B_OK) { //We need to offset the read operation. This is why we read it using index++
 			BMenu* superMenu = new BMenu(superType);
 
 			BMessage* message = new BMessage(kMIMETypeItem);
@@ -1887,13 +1887,14 @@ FindPanel::AddMimeTypesToMenu()
 				superType));
 
 			// the MimeTypeMenu's font is not correct at this time
-			superMenu->SetFont(be_plain_font);
-		}
+			superMenu->SetFont(be_plain_font); //Changing the font of the MIME-Type Menu.
+		}AddOneMimeTypeToMenu
 	}
 
+	// Adds all the MIME type groups according to the super type.
 	if (tracker != NULL) {
 		tracker->MimeTypes()->EachCommonType(
-			&FindPanel::AddOneMimeTypeToMenu, MimeTypeMenu());
+			&FindPanel::, MimeTypeMenu());
 	}
 
 	// remove empty super type menus (and set target)
@@ -1908,7 +1909,7 @@ FindPanel::AddMimeTypesToMenu()
 			MimeTypeMenu()->RemoveItem(item);
 			delete item;
 		} else
-			submenu->SetTargetForItems(this);
+			submenu->SetTargetForItems(this); //Sends the message to the Find Panel. This is the job of the BMessenger.
 	}
 }
 
@@ -2217,6 +2218,7 @@ FindPanel::RemoveAttrRow()
 	delete view;
 }
 
+//This function is used to set which search mode the Find panel opens with.
 
 uint32
 FindPanel::InitialMode(const BNode* node)
@@ -3447,7 +3449,7 @@ MostUsedNames::LoadList()
 void
 MostUsedNames::UpdateList()
 {
-	AutoLock<Benaphore> locker(fLock);
+	AutoLock<Benaphore> locker(fLock); //This is responsible for locking this resource.
 
 	if (!fLoaded)
 		LoadList();
