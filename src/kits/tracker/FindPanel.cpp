@@ -925,7 +925,7 @@ FindPanel::AttachedToWindow()
 	if (button != NULL)
 		button->SetTarget(this);
 
-	fVolMenu->SetTargetForItems(this);
+	fVolMenu->SetTargetForItems(this); //Setting the view as the handler of the BMessages that are sent out by the Volume Menu.
 
 	// set target for MIME type items
 	for (int32 index = MimeTypeMenu()->CountItems(); index-- > 2;) {
@@ -1356,7 +1356,7 @@ FindPanel::BuildAttrQuery(BQuery* query, bool& dynamicDate) const
 	// go through each attrview and add the attr and comparison info
 	for (int32 index = 0; index < fAttrGrid->CountRows(); index++) {
 
-		BString title;
+		BString title; // A buffer 
 		title << "TextEntry" << index;
 
 		BTextControl* textControl = dynamic_cast<BTextControl*>(
@@ -1519,8 +1519,8 @@ FindPanel::PushMimeType(BQuery* query) const
 void
 FindPanel::GetByAttrPredicate(BQuery* query, bool& dynamicDate) const
 {
-	ASSERT(Mode() == (int32)kByAttributeItem);
-	BuildAttrQuery(query, dynamicDate);
+	ASSERT(Mode() == (int32)kByAttributeItem); // For the Debug Build.
+	BuildAttrQuery(query, dynamicDate); 
 	PushMimeType(query);
 }
 
@@ -1602,19 +1602,19 @@ FindPanel::GetByNamePredicate(BQuery* query) const
 
 
 void
-FindPanel::SwitchMode(uint32 mode)
+FindPanel::SwitchMode(uint32 mode) //This function is used to switch the mode in which the current Find Panel is Operating
 {
-	if (fMode == mode)
+	if (fMode == mode) 
 		// no work, bail
 		return;
 
-	uint32 oldMode = fMode;
-	BString buffer;
+	uint32 oldMode = fMode; //Storing a copy of the old mode for future use.
+	BString buffer; // This is simply just a buffer that is used to store the old predicate?
 
 	switch (mode) {
 		case kByFormulaItem:
 		{
-			if (oldMode == kByAttributeItem || oldMode == kByNameItem) {
+			if (oldMode == kByAttributeItem || oldMode == kByNameItem) { // If we were not searching by formula
 				BQuery query;
 				if (oldMode == kByAttributeItem) {
 					bool dummy;
@@ -1668,7 +1668,7 @@ FindPanel::CurrentMimeType(const char** type) const
 	// search for marked item in the list
 	BMenuItem* item = MimeTypeMenu()->FindMarked();
 
-	if (item != NULL && MimeTypeMenu()->IndexOf(item) != 0
+	if (item != NULL && MimeTypeMenu()->IndexOf(item) != 0 //This piece of code checks whether the selected element is part of the favorites.
 		&& item->Submenu() == NULL) {
 		// if it's one of the most used items, ignore it
 		item = NULL;
@@ -2376,8 +2376,8 @@ FindPanel::RestoreMimeTypeMenuSelection(const BNode* node)
 void
 FindPanel::RestoreWindowState(const BNode* node)
 {
-	fMode = InitialMode(node);
-	if (node == NULL || node->InitCheck() != B_OK)
+	fMode = InitialMode(node); // Returns the mode in which the Find Panel is there by reading the attribute from the node associated with the file.
+	if (node == NULL || node->InitCheck() != B_OK) //Preliminary Check.
 		return;
 
 	ShowOrHideMimeTypeMenu();
@@ -2588,22 +2588,22 @@ FindPanel::RemoveByAttributeItems()
 void
 FindPanel::ShowOrHideMimeTypeMenu()
 {
-	BView* menuFieldSpacer = FindView("MimeTypeMenuSpacer");
+	BView* menuFieldSpacer = FindView("MimeTypeMenuSpacer"); // Retrieves the Menu Spacer Empty Item
 	BMenuField* menuField
-		= dynamic_cast<BMenuField*>(FindView("MimeTypeMenu"));
+		= dynamic_cast<BMenuField*>(FindView("MimeTypeMenu")); // Retrieves the MIME-Type Menu.
 	if (menuFieldSpacer == NULL || menuField == NULL)
 		return;
 
 	if (Mode() == (int32)kByFormulaItem && !menuField->IsHidden(this)) {
 		BSize size = menuField->ExplicitMinSize();
-		menuField->Hide();
-		menuFieldSpacer->SetExplicitMinSize(size);
+		menuField->Hide(); // In the Find By Formula mode, we hide the dropdown. 
+		menuFieldSpacer->SetExplicitMinSize(size); // We change the spacing item to ensure that it covers the entirety of the menu Field spacer item.
 		menuFieldSpacer->SetExplicitMaxSize(size);
 		if (menuFieldSpacer->IsHidden(this))
-			menuFieldSpacer->Show();
+			menuFieldSpacer->Show(); // Show the Spacer
 	} else if (menuField->IsHidden(this)) {
-		menuFieldSpacer->Hide();
-		menuField->Show();
+		menuFieldSpacer->Hide(); // Don't use the spacer
+		menuField->Show(); //Show the MIME-Type Menu.
 	}
 }
 

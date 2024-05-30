@@ -240,7 +240,7 @@ private:
 			void 				AddAttributeControls(int32);
 
 			// fMode gets set by this and the call relies on it being up-to-date
-			void 				ShowOrHideMoreOptions(bool show);
+			void 				ShowOrHideMoreOptions(bool show); //Deprecated Function that is no longer used.
 	static 	int32 				InitialAttrCount(const BNode*);
 			void 				FillCurrentQueryName(BTextControl*, FindWindow*);
 			void 				AddByNameOrFormulaItems();
