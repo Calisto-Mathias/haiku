@@ -54,6 +54,7 @@ class BCheckBox;
 class BMenuField;
 class BFile;
 class BPopUpMenu;
+class BMenuBar;
 class BGridLayout;
 
 namespace BPrivate {
@@ -62,6 +63,7 @@ class FindPanel;
 class Model;
 class DraggableIcon;
 class TAttrView;
+class SavePanel;
 
 const uint32 kVolumeItem = 'Fvol';
 const uint32 kAttributeItemMain = 'Fatr';
@@ -70,6 +72,12 @@ const uint32 kByAttributeItem = 'Fbya';
 const uint32 kByFormulaItem = 'Fbyq';
 const uint32 kAddItem = 'Fadd';
 const uint32 kRemoveItem = 'Frem';
+
+const uint32 kOpenSaveQueryPanel = 'Fosv';
+const uint32 kOpenLoadQueryPanel = 'Folo';
+const uint32 kCloseSaveQueryPanel = 'Fcsv';
+const uint32 kEditFormula = 'Ffor';
+const uint32 kNameEdited = 'FNmE';
 
 #ifdef _IMPEXP_TRACKER
 _IMPEXP_TRACKER
@@ -119,6 +127,31 @@ struct MoreOptionsStruct {
 	static	bool 				QueryTemporary(const BNode*);
 };
 
+class SaveWindow: public BWindow{
+public:
+								SaveWindow(BWindow*);	
+	virtual						~SaveWindow();
+	virtual	bool				QuitRequested();
+private:
+			SavePanel*			fSavePanel;
+};
+
+class SavePanel: public BView{
+public:
+								SavePanel(BWindow*);
+	virtual						~SavePanel();
+			void				ResetAllControls();
+			
+protected:
+	virtual	void				MessageReceived(BMessage*);
+	virtual void				AttachedToWindow();
+private:
+			BTextControl*		fQueryName;
+			BCheckBox*			fIncludeInFavorites;
+			BCheckBox*			fSaveInDefaultDirectory;
+			BButton*			fButton;
+			BMessenger*			fMessenger;
+};
 
 class FindWindow : public BWindow {
 public:
@@ -155,11 +188,14 @@ private:
 
 			status_t 			SaveQueryAsAttributes(BNode*, BEntry*, bool queryTemplate,
 									const BMessage* oldAttributes = 0,
-									const BPoint* oldLocation = 0);
+									const BPoint* oldLocation = 0, bool includeInFavorites = false);
 
 			void 				GetDefaultName(BString&);
+			void				GetDefaultDirectory(entry_ref*) const;
 			// dynamic date is a date such as 'today'
 			void 				GetPredicateString(BString&, bool& dynamicDate);
+			
+			void				BuildMenuBar(BMenuBar*);
 
 private:
 			BFile* 				fFile;
@@ -205,6 +241,7 @@ public:
 
 			void 				GetDefaultName(BString&) const;
 			void 				GetDefaultAttrName(BString&, int32) const;
+
 	// name filled out in the query name text field
 	const 	char* 				UserSpecifiedName() const;
 
@@ -252,7 +289,7 @@ private:
 			void 				PushMimeType(BQuery* query) const;
 
 			void 				SaveAsQueryOrTemplate(const entry_ref*,
-									const char*, bool queryTemplate);
+									const char*, bool queryTemplate, bool includeInFavorites = false);
 
 			BView* 				FindAttrView(const char*, int row) const;
 

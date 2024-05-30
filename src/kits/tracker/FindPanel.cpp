@@ -45,6 +45,7 @@ All rights reserved.
 #include <strings.h>
 
 #include <Application.h>
+#include <MenuBar.h>
 #include <Box.h>
 #include <Button.h>
 #include <Catalog.h>
@@ -253,7 +254,16 @@ FindWindow::FindWindow(const entry_ref* newRef, bool editIfTemplateOnly)
 
 	fBackground = new FindPanel(fFile, this, fFromTemplate,
 		fEditTemplateOnly);
-	SetLayout(new BGroupLayout(B_VERTICAL));
+		
+	BMenuBar *menuBar = new BMenuBar("Menu Bar");
+	BuildMenuBar(menuBar);
+		
+	BGroupLayout *layout = new BGroupLayout(B_VERTICAL);
+	SetLayout(layout);
+	layout->SetSpacing(0);
+	layout->SetInsets(0,0,0,0);
+	
+	GetLayout()->AddView(menuBar);
 	GetLayout()->AddView(fBackground);
 	CenterOnScreen();
 }
@@ -420,11 +430,38 @@ FindWindow::SaveQueryAttributes(BNode* file, bool queryTemplate)
 	file->WriteAttr("_trk/recentQuery", B_INT32_TYPE, 0, &tmp, sizeof(int32));
 }
 
+void
+FindWindow::BuildMenuBar(BMenuBar *menuBar)
+{
+	BMenu *queryMenu = new BMenu(B_TRANSLATE("Query"));
+	BMenu *attributesMenu = new BMenu(B_TRANSLATE("Attributes"));
+	BMenu *optionsMenu = new BMenu(B_TRANSLATE("Options"));
+	BMenu *favoritesMenu = new BMenu(B_TRANSLATE("Favorites"));
+
+	BMenu *historySubMenu = new BMenu(B_TRANSLATE("History"));
+	FindPanel::AddRecentQueries(historySubMenu, false, new BMessenger(fBackground), 
+		kSwitchToQueryTemplate);
+	
+	queryMenu->AddItem(new BMenuItem(B_TRANSLATE("Save Query"),
+		new BMessage(kOpenSaveQueryPanel)));
+	queryMenu->AddItem(new BMenuItem(B_TRANSLATE("Open Query"),
+		new BMessage(kOpenLoadQueryPanel)));
+	queryMenu->AddSeparatorItem();
+	queryMenu->AddItem(new BMenuItem(B_TRANSLATE("Edit Formula"),
+		new BMessage(kEditFormula)));
+	queryMenu->AddSeparatorItem();
+	queryMenu->AddItem(historySubMenu);
+		
+	menuBar->AddItem(queryMenu);
+	menuBar->AddItem(attributesMenu);
+	menuBar->AddItem(optionsMenu);
+	menuBar->AddItem(favoritesMenu);	
+}
 
 status_t
 FindWindow::SaveQueryAsAttributes(BNode* file, BEntry* entry,
 	bool queryTemplate, const BMessage* oldAttributes,
-	const BPoint* oldLocation)
+	const BPoint* oldLocation,bool includeInFavorites)
 {
 	if (oldAttributes != NULL) {
 		// revive old window settings
@@ -447,6 +484,11 @@ FindWindow::SaveQueryAsAttributes(BNode* file, BEntry* entry,
 	if (dynamicDate) {
 		file->WriteAttr(kAttrDynamicDateQuery, B_BOOL_TYPE, 0, &dynamicDate,
 			sizeof(dynamicDate));
+	}
+	
+	if (includeInFavorites) {
+		file->WriteAttr("_trk/favorites", B_BOOL_TYPE, 0, &includeInFavorites, 
+			sizeof(includeInFavorites));	
 	}
 
 	int32 tmp = 1;
@@ -655,10 +697,11 @@ FindWindow::MessageReceived(BMessage* message)
 				entry_ref dir;
 				const char* name;
 				bool queryTemplate;
+				bool includeInFavorites;
 				if (message->FindString("name", &name) == B_OK
 					&& message->FindRef("directory", &dir) == B_OK
-					&& message->FindBool("template", &queryTemplate)
-						== B_OK) {
+			 		&& message->FindBool("template", &queryTemplate)
+						== B_OK && message->FindBool("Include In Favorites", &includeInFavorites)==B_OK) {
 					delete fFile;
 					fFile = NULL;
 					BDirectory directory(&dir);
@@ -669,7 +712,7 @@ FindWindow::MessageReceived(BMessage* message)
 					if (fFile != NULL) {
 						fRef = tmpRef;
 						SaveQueryAsAttributes(fFile, &entry, queryTemplate,
-							0, 0);
+							0, 0, includeInFavorites);
 							// try to save whatever state we aleady have
 							// to the new query so that if the user
 							// opens it before runing it from the find panel,
@@ -678,6 +721,55 @@ FindWindow::MessageReceived(BMessage* message)
 				}
 			}
 			break;
+
+		case kOpenSaveQueryPanel:
+		{				
+			SaveWindow *saveQueryWindow = new SaveWindow(this);
+			saveQueryWindow->Show();
+			break;
+		}
+		
+		case kCloseSaveQueryPanel:
+		{
+			const char *queryName;
+			bool includeInFavorites;
+			bool saveInDefaultDirectory;
+			
+			if(message->FindString("Query Name", &queryName) != B_OK
+				|| message->FindBool("Include In Favorites", &includeInFavorites) != B_OK
+				|| message->FindBool("Save In Default Directory", &saveInDefaultDirectory) != B_OK)
+				break;
+			
+			if (fSaveAsTemplatePanel == NULL)
+			{
+				BMessenger panel(BackgroundView());
+				fSaveAsTemplatePanel = new BFilePanel(B_SAVE_PANEL, &panel);	
+			}
+			
+			if (!saveInDefaultDirectory){
+				BMessage *message = new BMessage(B_SAVE_REQUESTED);
+				message->AddBool("Include In Favorites", includeInFavorites);
+			
+				fSaveAsTemplatePanel->SetSaveText(B_TRANSLATE(queryName));
+				fSaveAsTemplatePanel->Window()->SetTitle(B_TRANSLATE("Save Query"));
+				fSaveAsTemplatePanel->SetMessage(message);
+				fSaveAsTemplatePanel->Show();	
+			}
+			else{
+				entry_ref userDirectory;
+				GetDefaultDirectory(&userDirectory);
+				
+				BMessage *message = new BMessage(B_SAVE_REQUESTED);
+				message->AddBool("Include In Favorites", includeInFavorites);
+				message->AddRef("directory", &userDirectory);
+				message->AddString("name", queryName);
+				
+				BMessenger messenger(fBackground);
+				messenger.SendMessage(message);
+			}
+			
+			break;
+		}
 
 		case kSwitchToQueryTemplate:
 		{
@@ -1233,6 +1325,10 @@ FindPanel::MessageReceived(BMessage* message)
 			entry_ref ref;
 			status_t error = message->FindRef("refs", &ref);
 
+			bool includeInFavorites;
+			if(message->FindBool("Include In Favorites", &includeInFavorites) != B_OK)
+				break;
+
 			if (error == B_OK) {
 				// direct entry selected, convert to parent dir and name
 				BEntry entry(&ref);
@@ -1249,7 +1345,7 @@ FindPanel::MessageReceived(BMessage* message)
 			}
 
 			if (error == B_OK)
-				SaveAsQueryOrTemplate(&dir, name, true);
+				SaveAsQueryOrTemplate(&dir, name, true, includeInFavorites);
 
 			break;
 		}
@@ -1303,10 +1399,21 @@ FindPanel::MessageReceived(BMessage* message)
 	}
 }
 
+void
+FindWindow::GetDefaultDirectory(entry_ref *directoryRef) const
+{
+	
+	BEntry entry("/boot/home/queries");
+	if (!entry.Exists()){
+		BDirectory directory("/boot/home");
+		directory.CreateDirectory("queries", NULL);
+	}
+	entry.GetRef(directoryRef);
+}
 
 void
 FindPanel::SaveAsQueryOrTemplate(const entry_ref* dir, const char* name,
-	bool queryTemplate)
+	bool queryTemplate, bool includeInFavorites)
 {
 	BDirectory directory(dir);
 	BFile file(&directory, name, O_RDWR | O_CREAT | O_TRUNC);
@@ -1317,9 +1424,9 @@ FindPanel::SaveAsQueryOrTemplate(const entry_ref* dir, const char* name,
 	attach.AddRef("directory", dir);
 	attach.AddString("name", name);
 	attach.AddBool("template", queryTemplate);
+	attach.AddBool("Include In Favorites", includeInFavorites);
 	Window()->PostMessage(&attach, 0);
 }
-
 
 BView*
 FindPanel::FindAttrView(const char* name, int row) const
@@ -2697,7 +2804,6 @@ FindPanel::AddAttributeControls(int32 gridRow)
 	AddMimeTypeAttrs(menu);
 }
 
-
 void
 FindPanel::RestoreAttrState(const BMessage& message, int32 index)
 {
@@ -3447,9 +3553,120 @@ MostUsedNames::UpdateList()
 	if (!fLoaded)
 		LoadList();
 
-	// sort list items
+	// sort list item
 
 	fList.SortItems(MostUsedNames::CompareNames);
+}
+
+SaveWindow::SaveWindow(BWindow *parentWindow)
+	:
+	BWindow(BRect(), B_TRANSLATE("Save Query"), B_TITLED_WINDOW_LOOK, 
+		B_FLOATING_APP_WINDOW_FEEL, B_NOT_ZOOMABLE
+			| B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS)
+{
+	fSavePanel = new SavePanel(parentWindow);
+	
+	SetLayout(new BGroupLayout(B_VERTICAL));
+	GetLayout()->AddView(fSavePanel);	
+	
+	CenterOnScreen();
+}
+
+SaveWindow::~SaveWindow()
+{
+	// Empty Destructor
+}
+
+bool
+SaveWindow::QuitRequested()
+{
+	return true;	
+}
+
+SavePanel::SavePanel(BWindow *parentWindow)
+	:
+	BView(BRect(), "Save Panel", B_FOLLOW_ALL, B_NOT_RESIZABLE | 
+		B_NOT_MOVABLE | B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS)
+{
+	fMessenger = new BMessenger(parentWindow);
+	
+	fQueryName = new BTextControl("Query Name", B_TRANSLATE("Query Name"), "", NULL);
+	fIncludeInFavorites = new BCheckBox("Include in Favorites", 
+		B_TRANSLATE("Include in Favorites"), NULL);
+	fSaveInDefaultDirectory = new BCheckBox("Save In Default Directory", 
+		B_TRANSLATE("Save in Default Directory"), NULL);
+	fButton = new BButton(B_TRANSLATE("Save"), new BMessage(kOpenSaveQueryPanel));
+	
+	fQueryName->MakeFocus();
+	fQueryName->SetModificationMessage(new BMessage(kNameEdited));
+	
+	fButton->SetEnabled(false);
+		
+	BLayoutBuilder::Group<>(this, B_VERTICAL)
+		.SetInsets(B_USE_DEFAULT_SPACING)
+		.Add(fQueryName)
+		.AddGroup(B_HORIZONTAL)
+			.AddGroup(B_VERTICAL)
+				.Add(fIncludeInFavorites)
+				.Add(fSaveInDefaultDirectory)
+			.End()
+			.Add(fButton)
+		.End();
+}
+
+void
+SavePanel::AttachedToWindow()
+{
+	fQueryName->SetTarget(this);
+	fButton->SetTarget(this);
+}
+
+void
+SavePanel::MessageReceived(BMessage *message)
+{
+	switch(message->what)
+	{
+		case kNameEdited:
+		{
+			if (strcmp(fQueryName->Text(),""))
+				fButton->SetEnabled(true);
+			else
+				fButton->SetEnabled(false);
+			break;	
+		}
+		
+		case kOpenSaveQueryPanel:
+		{
+			Window()->Hide();
+			
+			const char *queryName = fQueryName->Text();
+			bool includeInFavorites = fIncludeInFavorites->Value() == B_CONTROL_ON;
+			bool saveInDefaultDirectory = fSaveInDefaultDirectory->Value() == B_CONTROL_ON;
+			
+			BMessage *message = new BMessage(kCloseSaveQueryPanel);
+			message->AddString("Query Name", queryName);
+			message->AddBool("Include In Favorites", includeInFavorites);
+			message->AddBool("Save In Default Directory", saveInDefaultDirectory);
+			
+			fMessenger->SendMessage(message);
+			Window()->Quit();
+			
+			break;
+		}
+	}
+}
+
+void
+SavePanel::ResetAllControls()
+{
+	fQueryName->SetText("");
+	fIncludeInFavorites->SetValue(0);
+	fSaveInDefaultDirectory->SetValue(0);
+	fButton->SetEnabled(false);
+}
+SavePanel::~SavePanel()
+{
+	// Empty Constructor
 }
 
 }	// namespace BPrivate
