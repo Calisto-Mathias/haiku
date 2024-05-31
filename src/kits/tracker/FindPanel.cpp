@@ -45,7 +45,6 @@ All rights reserved.
 #include <strings.h>
 
 #include <Application.h>
-#include <MenuBar.h>
 #include <Box.h>
 #include <Button.h>
 #include <Catalog.h>
@@ -61,6 +60,7 @@ All rights reserved.
 #include <InterfaceDefs.h>
 #include <LayoutBuilder.h>
 #include <Locale.h>
+#include <MenuBar.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <Mime.h>
@@ -85,6 +85,7 @@ All rights reserved.
 #include "FunctionObject.h"
 #include "IconMenuItem.h"
 #include "MimeTypes.h"
+#include "SaveWindow.h"
 #include "Tracker.h"
 
 
@@ -461,7 +462,7 @@ FindWindow::BuildMenuBar(BMenuBar *menuBar)
 status_t
 FindWindow::SaveQueryAsAttributes(BNode* file, BEntry* entry,
 	bool queryTemplate, const BMessage* oldAttributes,
-	const BPoint* oldLocation,bool includeInFavorites)
+	const BPoint* oldLocation, bool includeInFavorites)
 {
 	if (oldAttributes != NULL) {
 		// revive old window settings
@@ -3556,117 +3557,6 @@ MostUsedNames::UpdateList()
 	// sort list item
 
 	fList.SortItems(MostUsedNames::CompareNames);
-}
-
-SaveWindow::SaveWindow(BWindow *parentWindow)
-	:
-	BWindow(BRect(), B_TRANSLATE("Save Query"), B_TITLED_WINDOW_LOOK, 
-		B_FLOATING_APP_WINDOW_FEEL, B_NOT_ZOOMABLE
-			| B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS)
-{
-	fSavePanel = new SavePanel(parentWindow);
-	
-	SetLayout(new BGroupLayout(B_VERTICAL));
-	GetLayout()->AddView(fSavePanel);	
-	
-	CenterOnScreen();
-}
-
-SaveWindow::~SaveWindow()
-{
-	// Empty Destructor
-}
-
-bool
-SaveWindow::QuitRequested()
-{
-	return true;	
-}
-
-SavePanel::SavePanel(BWindow *parentWindow)
-	:
-	BView(BRect(), "Save Panel", B_FOLLOW_ALL, B_NOT_RESIZABLE | 
-		B_NOT_MOVABLE | B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS)
-{
-	fMessenger = new BMessenger(parentWindow);
-	
-	fQueryName = new BTextControl("Query Name", B_TRANSLATE("Query Name"), "", NULL);
-	fIncludeInFavorites = new BCheckBox("Include in Favorites", 
-		B_TRANSLATE("Include in Favorites"), NULL);
-	fSaveInDefaultDirectory = new BCheckBox("Save In Default Directory", 
-		B_TRANSLATE("Save in Default Directory"), NULL);
-	fButton = new BButton(B_TRANSLATE("Save"), new BMessage(kOpenSaveQueryPanel));
-	
-	fQueryName->MakeFocus();
-	fQueryName->SetModificationMessage(new BMessage(kNameEdited));
-	
-	fButton->SetEnabled(false);
-		
-	BLayoutBuilder::Group<>(this, B_VERTICAL)
-		.SetInsets(B_USE_DEFAULT_SPACING)
-		.Add(fQueryName)
-		.AddGroup(B_HORIZONTAL)
-			.AddGroup(B_VERTICAL)
-				.Add(fIncludeInFavorites)
-				.Add(fSaveInDefaultDirectory)
-			.End()
-			.Add(fButton)
-		.End();
-}
-
-void
-SavePanel::AttachedToWindow()
-{
-	fQueryName->SetTarget(this);
-	fButton->SetTarget(this);
-}
-
-void
-SavePanel::MessageReceived(BMessage *message)
-{
-	switch(message->what)
-	{
-		case kNameEdited:
-		{
-			if (strcmp(fQueryName->Text(),""))
-				fButton->SetEnabled(true);
-			else
-				fButton->SetEnabled(false);
-			break;	
-		}
-		
-		case kOpenSaveQueryPanel:
-		{
-			Window()->Hide();
-			
-			const char *queryName = fQueryName->Text();
-			bool includeInFavorites = fIncludeInFavorites->Value() == B_CONTROL_ON;
-			bool saveInDefaultDirectory = fSaveInDefaultDirectory->Value() == B_CONTROL_ON;
-			
-			BMessage *message = new BMessage(kCloseSaveQueryPanel);
-			message->AddString("Query Name", queryName);
-			message->AddBool("Include In Favorites", includeInFavorites);
-			message->AddBool("Save In Default Directory", saveInDefaultDirectory);
-			
-			fMessenger->SendMessage(message);
-			Window()->Quit();
-			
-			break;
-		}
-	}
-}
-
-void
-SavePanel::ResetAllControls()
-{
-	fQueryName->SetText("");
-	fIncludeInFavorites->SetValue(0);
-	fSaveInDefaultDirectory->SetValue(0);
-	fButton->SetEnabled(false);
-}
-SavePanel::~SavePanel()
-{
-	// Empty Constructor
 }
 
 }	// namespace BPrivate

@@ -72,12 +72,7 @@ const uint32 kByAttributeItem = 'Fbya';
 const uint32 kByFormulaItem = 'Fbyq';
 const uint32 kAddItem = 'Fadd';
 const uint32 kRemoveItem = 'Frem';
-
-const uint32 kOpenSaveQueryPanel = 'Fosv';
-const uint32 kOpenLoadQueryPanel = 'Folo';
-const uint32 kCloseSaveQueryPanel = 'Fcsv';
-const uint32 kEditFormula = 'Ffor';
-const uint32 kNameEdited = 'FNmE';
+const uint32 kEditFormula = 'FEFo';
 
 #ifdef _IMPEXP_TRACKER
 _IMPEXP_TRACKER
@@ -125,32 +120,6 @@ struct MoreOptionsStruct {
 
 	static	void 				SetQueryTemporary(BNode*, bool on);
 	static	bool 				QueryTemporary(const BNode*);
-};
-
-class SaveWindow: public BWindow{
-public:
-								SaveWindow(BWindow*);	
-	virtual						~SaveWindow();
-	virtual	bool				QuitRequested();
-private:
-			SavePanel*			fSavePanel;
-};
-
-class SavePanel: public BView{
-public:
-								SavePanel(BWindow*);
-	virtual						~SavePanel();
-			void				ResetAllControls();
-			
-protected:
-	virtual	void				MessageReceived(BMessage*);
-	virtual void				AttachedToWindow();
-private:
-			BTextControl*		fQueryName;
-			BCheckBox*			fIncludeInFavorites;
-			BCheckBox*			fSaveInDefaultDirectory;
-			BButton*			fButton;
-			BMessenger*			fMessenger;
 };
 
 class FindWindow : public BWindow {
