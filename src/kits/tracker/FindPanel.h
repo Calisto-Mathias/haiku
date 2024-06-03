@@ -73,6 +73,8 @@ const uint32 kByFormulaItem = 'Fbyq';
 const uint32 kAddItem = 'Fadd';
 const uint32 kRemoveItem = 'Frem';
 const uint32 kEditFormula = 'FEFo';
+const uint32 kOptionClicked = 'FOCl';
+const uint32 kLoadQuery = 'FLQr';
 
 #ifdef _IMPEXP_TRACKER
 _IMPEXP_TRACKER
@@ -137,7 +139,7 @@ public:
 	const 	char* 				QueryName() const;
 
 	static 	bool 				IsQueryTemplate(BNode* file);
-
+			void				SetInitialOptions(bool, bool);
 protected:
 	virtual	void 				MessageReceived(BMessage* message);
 
@@ -157,7 +159,7 @@ private:
 
 			status_t 			SaveQueryAsAttributes(BNode*, BEntry*, bool queryTemplate,
 									const BMessage* oldAttributes = 0,
-									const BPoint* oldLocation = 0, bool includeInFavorites = false);
+									const BPoint* oldLocation = 0);
 
 			void 				GetDefaultName(BString&);
 			void				GetDefaultDirectory(entry_ref*) const;
@@ -165,6 +167,7 @@ private:
 			void 				GetPredicateString(BString&, bool& dynamicDate);
 			
 			void				BuildMenuBar(BMenuBar*);
+			void				BuildFavoritesMenu(BMenu*);
 
 private:
 			BFile* 				fFile;
@@ -173,8 +176,11 @@ private:
 			bool 				fEditTemplateOnly;
 			FindPanel* 			fBackground;
 	mutable BString 			fQueryNameFromTemplate;
-			BFilePanel* 		fSaveAsTemplatePanel;
-
+			BFilePanel*			fSaveAsTemplatePanel;
+			BFilePanel*			fOpenQueryPanel;
+			
+			BMenuItem*			fSearchInTrash;
+			BMenuItem*			fTemporary;
 	typedef BWindow _inherited;
 };
 
@@ -258,7 +264,7 @@ private:
 			void 				PushMimeType(BQuery* query) const;
 
 			void 				SaveAsQueryOrTemplate(const entry_ref*,
-									const char*, bool queryTemplate, bool includeInFavorites = false);
+									const char*, bool queryTemplate);
 
 			BView* 				FindAttrView(const char*, int row) const;
 
@@ -278,13 +284,9 @@ private:
 			BMenuField* 		fMimeTypeField;
 			BPopUpMenu* 		fVolMenu;
 			BPopUpMenu*			fSearchModeMenu;
-			BPopUpMenu* 		fRecentQueries;
 			BBox* 				fMoreOptions;
 			BTextControl* 		fQueryName;
 			BString 			fInitialQueryName;
-
-			BCheckBox* 			fTemporaryCheck;
-			BCheckBox* 			fSearchTrashCheck;
 
 			DraggableIcon* 		fDraggableIcon;
 

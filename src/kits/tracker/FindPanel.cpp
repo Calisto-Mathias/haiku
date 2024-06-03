@@ -452,17 +452,82 @@ FindWindow::BuildMenuBar(BMenuBar *menuBar)
 		new BMessage(kEditFormula)));
 	queryMenu->AddSeparatorItem();
 	queryMenu->AddItem(historySubMenu);
-		
+
+	fSearchInTrash = new BMenuItem(B_TRANSLATE("Search In Trash"),NULL);
+	fTemporary = new BMenuItem(B_TRANSLATE("Temporary Query"), NULL);
+	BMessage *searchInTrashMessage = new BMessage(kOptionClicked);
+	BMessage *temporaryMessage = new BMessage(kOptionClicked);
+	searchInTrashMessage->AddPointer("optionItem", fSearchInTrash);
+	temporaryMessage->AddPointer("optionItem", fTemporary);
+	fSearchInTrash->SetMessage(searchInTrashMessage);
+	fTemporary->SetMessage(temporaryMessage);
+	optionsMenu->AddItem(fSearchInTrash);
+	optionsMenu->AddItem(fTemporary);
+	optionsMenu->SetRadioMode(false);
+
+	BuildFavoritesMenu(favoritesMenu);
+
 	menuBar->AddItem(queryMenu);
 	menuBar->AddItem(attributesMenu);
 	menuBar->AddItem(optionsMenu);
-	menuBar->AddItem(favoritesMenu);	
+	menuBar->AddItem(favoritesMenu);
+}
+
+void
+FindWindow::BuildFavoritesMenu(BMenu *favoritesMenu)
+{
+	BObjectList<entry_ref> templates(10, true);
+	
+	BVolumeRoster roster;
+	BVolume volume;
+	while(roster.GetNextVolume(&volume) == B_OK){
+		if(volume.IsPersistent() && volume.KnowsQuery() && volume.KnowsAttr()){
+			BQuery query;
+			query.SetVolume(&volume);
+			query.SetPredicate("_trk/recentQuery == 1");
+			
+			if(query.Fetch() != B_OK)
+				continue;
+
+			entry_ref ref;
+			while(query.GetNextRef(&ref) == B_OK){
+				if(FSInTrashDir(&ref))
+					continue;
+				
+				char type[B_MIME_TYPE_LENGTH];
+				BNodeInfo(new BNode(&ref)).GetType(type);
+				if(strcasecmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0){
+					templates.AddItem(new entry_ref(ref));
+				}
+			}
+		}
+	}
+	
+	int32 count = templates.CountItems();
+	
+	for(int32 i = 0;i<count;i++){
+		entry_ref *ref = templates.ItemAt(i);
+		char type[B_MIME_TYPE_LENGTH];
+		BNodeInfo(new BNode(ref)).GetType(type);
+		BMessage *message = new BMessage(kSwitchToQueryTemplate);
+		message->AddRef("refs", ref);
+		BMenuItem *item = new IconMenuItem(ref->name, message, type);
+		item->SetTarget(BMessenger(fBackground));
+		favoritesMenu->AddItem(item);
+	}
+}
+
+void
+FindWindow::SetInitialOptions(bool searchInTrash, bool temporary)
+{
+	fSearchInTrash->SetMarked(searchInTrash);
+	fTemporary->SetMarked(temporary);
 }
 
 status_t
 FindWindow::SaveQueryAsAttributes(BNode* file, BEntry* entry,
 	bool queryTemplate, const BMessage* oldAttributes,
-	const BPoint* oldLocation, bool includeInFavorites)
+	const BPoint* oldLocation)
 {
 	if (oldAttributes != NULL) {
 		// revive old window settings
@@ -485,11 +550,6 @@ FindWindow::SaveQueryAsAttributes(BNode* file, BEntry* entry,
 	if (dynamicDate) {
 		file->WriteAttr(kAttrDynamicDateQuery, B_BOOL_TYPE, 0, &dynamicDate,
 			sizeof(dynamicDate));
-	}
-	
-	if (includeInFavorites) {
-		file->WriteAttr("_trk/favorites", B_BOOL_TYPE, 0, &includeInFavorites, 
-			sizeof(includeInFavorites));	
 	}
 
 	int32 tmp = 1;
@@ -531,6 +591,16 @@ FindWindow::SaveQueryAsAttributes(BNode* file, BEntry* entry,
 			buffer.UnlockBuffer();
 		}
 		// default to query for everything
+	}
+	
+	MoreOptionsStruct saveMoreOptions;
+	saveMoreOptions.searchTrash = fSearchInTrash->IsMarked();
+	saveMoreOptions.temporary = fTemporary->IsMarked();
+
+	if (file->WriteAttr(kAttrQueryMoreOptions, B_RAW_TYPE, 0,
+		&saveMoreOptions,
+		sizeof(saveMoreOptions)) == sizeof(saveMoreOptions)) {
+		file->RemoveAttr(kAttrQueryMoreOptionsForeign);
 	}
 
 	fBackground->SaveWindowState(file, fEditTemplateOnly);
@@ -693,16 +763,31 @@ FindWindow::MessageReceived(BMessage* message)
 			Save();
 			break;
 
+		case kNameModifiedMessage:
+		{
+			fTemporary->SetMarked(false);
+			break;
+		}
+		
+		case kOptionClicked:
+		{
+			void *item;
+			if(message->FindPointer("optionItem", &item) == B_OK){
+				BMenuItem *menuItem = static_cast<BMenuItem*>(item);
+				menuItem->SetMarked(!menuItem->IsMarked());
+			}
+			break;
+		}
+		
 		case kAttachFile:
 			{
 				entry_ref dir;
 				const char* name;
 				bool queryTemplate;
-				bool includeInFavorites;
 				if (message->FindString("name", &name) == B_OK
 					&& message->FindRef("directory", &dir) == B_OK
 			 		&& message->FindBool("template", &queryTemplate)
-						== B_OK && message->FindBool("Include In Favorites", &includeInFavorites)==B_OK) {
+						== B_OK) {
 					delete fFile;
 					fFile = NULL;
 					BDirectory directory(&dir);
@@ -713,7 +798,7 @@ FindWindow::MessageReceived(BMessage* message)
 					if (fFile != NULL) {
 						fRef = tmpRef;
 						SaveQueryAsAttributes(fFile, &entry, queryTemplate,
-							0, 0, includeInFavorites);
+							0, 0);
 							// try to save whatever state we aleady have
 							// to the new query so that if the user
 							// opens it before runing it from the find panel,
@@ -744,7 +829,7 @@ FindWindow::MessageReceived(BMessage* message)
 			if (fSaveAsTemplatePanel == NULL)
 			{
 				BMessenger panel(BackgroundView());
-				fSaveAsTemplatePanel = new BFilePanel(B_SAVE_PANEL, &panel);	
+				fSaveAsTemplatePanel = new BFilePanel(B_SAVE_PANEL, &panel);
 			}
 			
 			if (!saveInDefaultDirectory){
@@ -754,7 +839,7 @@ FindWindow::MessageReceived(BMessage* message)
 				fSaveAsTemplatePanel->SetSaveText(B_TRANSLATE(queryName));
 				fSaveAsTemplatePanel->Window()->SetTitle(B_TRANSLATE("Save Query"));
 				fSaveAsTemplatePanel->SetMessage(message);
-				fSaveAsTemplatePanel->Show();	
+				fSaveAsTemplatePanel->Show();
 			}
 			else{
 				entry_ref userDirectory;
@@ -770,6 +855,20 @@ FindWindow::MessageReceived(BMessage* message)
 			}
 			
 			break;
+		}
+
+		case kOpenLoadQueryPanel:
+		{
+			if(fOpenQueryPanel == NULL){
+				BMessenger target(this);
+				fOpenQueryPanel = new BFilePanel(B_OPEN_PANEL, &target);
+			}
+			
+			ASSERT(fOpenQueryPanel != NULL);
+			
+			fOpenQueryPanel->SetMessage(new BMessage(kSwitchToQueryTemplate));
+			fOpenQueryPanel->Window()->SetTitle(B_TRANSLATE("Open Query"));
+			fOpenQueryPanel->Show();
 		}
 
 		case kSwitchToQueryTemplate:
@@ -819,9 +918,6 @@ FindPanel::FindPanel(BFile* node, FindWindow* parent, bool fromTemplate,
 	uint32 initialMode = InitialMode(node);
 
 	BMessenger self(this);
-	fRecentQueries = new BPopUpMenu(B_TRANSLATE("Recent queries"), false,
-		false);
-	AddRecentQueries(fRecentQueries, true, &self, kSwitchToQueryTemplate);
 
 	// add popup for mime types
 	fMimeTypeMenu = new BPopUpMenu("MimeTypeMenu");
@@ -880,26 +976,6 @@ FindPanel::FindPanel(BFile* node, FindWindow* parent, bool fromTemplate,
 	fQueryName = new BTextControl("query name", B_TRANSLATE("Query name:"),
 		"", NULL, B_WILL_DRAW | B_NAVIGABLE | B_NAVIGABLE_JUMP);
 	FillCurrentQueryName(fQueryName, parent);
-	fSearchTrashCheck = new BCheckBox("searchTrash",
-		B_TRANSLATE("Include trash"), NULL);
-	fTemporaryCheck = new BCheckBox("temporary",
-		B_TRANSLATE("Temporary"), NULL);
-	fTemporaryCheck->SetValue(B_CONTROL_ON);
-
-	BView* checkboxGroup = BLayoutBuilder::Group<>(B_HORIZONTAL)
-		.Add(fSearchTrashCheck)
-		.Add(fTemporaryCheck)
-		.View();
-
-	// add the more options collapsible pane
-	fMoreOptions = new BBox(B_NO_BORDER, BLayoutBuilder::Group<>()
-		.AddGrid(B_USE_SMALL_SPACING, B_USE_SMALL_SPACING)
-			.Add(fQueryName->CreateLabelLayoutItem(), 0, 0)
-			.Add(fQueryName->CreateTextViewLayoutItem(), 1, 0)
-			.Add(BSpaceLayoutItem::CreateHorizontalStrut(0), 0, 1)
-			.Add(checkboxGroup, 1, 1)
-			.End()
-		.View());
 
 	// add Search button
 	BButton* button;
@@ -926,7 +1002,6 @@ FindPanel::FindPanel(BFile* node, FindWindow* parent, bool fromTemplate,
 	queryControls->SetBorder(B_NO_BORDER);
 
 	BBox* queryBox = new BBox("Outer Controls");
-	queryBox->SetLabel(new BMenuField("RecentQueries", NULL, fRecentQueries));
 
 	BGroupView* queryBoxView = new BGroupView(B_VERTICAL,
 		B_USE_DEFAULT_SPACING);
@@ -955,7 +1030,6 @@ FindPanel::FindPanel(BFile* node, FindWindow* parent, bool fromTemplate,
 				.Add(icon)
 				.AddGlue()
 			.End()
-			.Add(fMoreOptions)
 			.AddGlue()
 			.AddGroup(B_VERTICAL)
 				.AddGlue()
@@ -989,12 +1063,11 @@ FindPanel::AttachedToWindow()
 
 	BNode* node = findWindow->QueryNode();
 	fSearchModeMenu->SetTargetForItems(this);
-	fQueryName->SetTarget(this);
+	fQueryName->SetTarget(Window());
 	RestoreMimeTypeMenuSelection(node);
 		// preselect the mime we used the last time have to do it here
 		// because AddByAttributeItems will build different menus based
 		// on which mime type is preselected
-	RestoreWindowState(node);
 
 	if (!findWindow->CurrentFocus()) {
 		// try to pick a good focus if we restore to one already
@@ -1037,8 +1110,6 @@ FindPanel::AttachedToWindow()
 
 	if (fDraggableIcon != NULL)
 		fDraggableIcon->SetTarget(BMessenger(this));
-
-	fRecentQueries->SetTargetForItems(findWindow);
 }
 
 
@@ -1281,11 +1352,6 @@ FindPanel::MessageReceived(BMessage* message)
 			break;
 		}
 
-		case kNameModifiedMessage:
-			// the query name was edited, make the query permanent
-			fTemporaryCheck->SetValue(0);
-			break;
-
 		case kAttributeItem:
 			if (message->FindPointer("source", (void**)&item) != B_OK)
 				return;
@@ -1305,20 +1371,6 @@ FindPanel::MessageReceived(BMessage* message)
 
 			Invalidate();
 			break;
-
-		case kLatchChanged:
-		{
-			int32 value;
-			if (message->FindInt32("be:value", &value) != B_OK)
-				break;
-
-			if (value == 0 && !fMoreOptions->IsHidden(this))
-				fMoreOptions->Hide();
-			else if (value == 1 && fMoreOptions->IsHidden(this))
-				fMoreOptions->Show();
-
-			break;
-		}
 
 		case B_SAVE_REQUESTED:
 		{
@@ -1346,7 +1398,7 @@ FindPanel::MessageReceived(BMessage* message)
 			}
 
 			if (error == B_OK)
-				SaveAsQueryOrTemplate(&dir, name, true, includeInFavorites);
+				SaveAsQueryOrTemplate(&dir, name, includeInFavorites);
 
 			break;
 		}
@@ -1414,7 +1466,7 @@ FindWindow::GetDefaultDirectory(entry_ref *directoryRef) const
 
 void
 FindPanel::SaveAsQueryOrTemplate(const entry_ref* dir, const char* name,
-	bool queryTemplate, bool includeInFavorites)
+	bool queryTemplate)
 {
 	BDirectory directory(dir);
 	BFile file(&directory, name, O_RDWR | O_CREAT | O_TRUNC);
@@ -1425,7 +1477,6 @@ FindPanel::SaveAsQueryOrTemplate(const entry_ref* dir, const char* name,
 	attach.AddRef("directory", dir);
 	attach.AddString("name", name);
 	attach.AddBool("template", queryTemplate);
-	attach.AddBool("Include In Favorites", includeInFavorites);
 	Window()->PostMessage(&attach, 0);
 }
 
@@ -2381,16 +2432,6 @@ FindPanel::SaveWindowState(BNode* node, bool editTemplate)
 	node->WriteAttr(kAttrQueryInitialMode, B_INT32_TYPE, 0,
 		(int32*)&mode, sizeof(int32));
 
-	MoreOptionsStruct saveMoreOptions;
-	saveMoreOptions.searchTrash = fSearchTrashCheck->Value() != 0;
-	saveMoreOptions.temporary = fTemporaryCheck->Value() != 0;
-
-	if (node->WriteAttr(kAttrQueryMoreOptions, B_RAW_TYPE, 0,
-		&saveMoreOptions,
-		sizeof(saveMoreOptions)) == sizeof(saveMoreOptions)) {
-		node->RemoveAttr(kAttrQueryMoreOptionsForeign);
-	}
-
 	if (editTemplate) {
 		if (UserSpecifiedName()) {
 			BString name(UserSpecifiedName());
@@ -2492,8 +2533,8 @@ FindPanel::RestoreWindowState(const BNode* node)
 
 		saveMoreOptions.showMoreOptions = true; // Now unused
 
-		fSearchTrashCheck->SetValue(saveMoreOptions.searchTrash);
-		fTemporaryCheck->SetValue(saveMoreOptions.temporary);
+		static_cast<FindWindow*>(Window())->SetInitialOptions(saveMoreOptions.searchTrash, 
+			saveMoreOptions.temporary);
 
 		fQueryName->SetModificationMessage(NULL);
 		FindWindow* findWindow = dynamic_cast<FindWindow*>(Window());
