@@ -435,7 +435,6 @@ void
 FindWindow::BuildMenuBar(BMenuBar *menuBar)
 {
 	BMenu *queryMenu = new BMenu(B_TRANSLATE("Query"));
-	BMenu *attributesMenu = new BMenu(B_TRANSLATE("Attributes"));
 	BMenu *optionsMenu = new BMenu(B_TRANSLATE("Options"));
 	BMenu *favoritesMenu = new BMenu(B_TRANSLATE("Favorites"));
 
@@ -447,9 +446,6 @@ FindWindow::BuildMenuBar(BMenuBar *menuBar)
 		new BMessage(kOpenSaveQueryPanel)));
 	queryMenu->AddItem(new BMenuItem(B_TRANSLATE("Open Query"),
 		new BMessage(kOpenLoadQueryPanel)));
-	queryMenu->AddSeparatorItem();
-	queryMenu->AddItem(new BMenuItem(B_TRANSLATE("Edit Formula"),
-		new BMessage(kEditFormula)));
 	queryMenu->AddSeparatorItem();
 	queryMenu->AddItem(historySubMenu);
 
@@ -468,7 +464,6 @@ FindWindow::BuildMenuBar(BMenuBar *menuBar)
 	BuildFavoritesMenu(favoritesMenu);
 
 	menuBar->AddItem(queryMenu);
-	menuBar->AddItem(attributesMenu);
 	menuBar->AddItem(optionsMenu);
 	menuBar->AddItem(favoritesMenu);
 }
@@ -1372,6 +1367,15 @@ FindPanel::MessageReceived(BMessage* message)
 			Invalidate();
 			break;
 
+		case kSelectDirectory:
+		{
+			BFilePanel *selectDirectoryPanel = new BFilePanel(B_OPEN_PANEL, 
+				new BMessenger(this), NULL, B_DIRECTORY_NODE);
+			selectDirectoryPanel->Window()->SetTitle("Select a Directory to Search In");
+			selectDirectoryPanel->Show();
+		}
+		
+		
 		case B_SAVE_REQUESTED:
 		{
 			// finish saving query template from a SaveAs panel
@@ -2107,6 +2111,10 @@ FindPanel::AddVolumes(BMenu* menu)
 
 	if (menu->ItemAt(0))
 		menu->ItemAt(0)->SetMarked(true);
+
+	menu->AddSeparatorItem();
+	
+	menu->AddItem(new BMenuItem(B_TRANSLATE("Select Directory"), new BMessage(kSelectDirectory)));
 
 	menu->SetTargetForItems(this);
 }

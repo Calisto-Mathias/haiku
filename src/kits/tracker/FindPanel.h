@@ -75,6 +75,7 @@ const uint32 kRemoveItem = 'Frem';
 const uint32 kEditFormula = 'FEFo';
 const uint32 kOptionClicked = 'FOCl';
 const uint32 kLoadQuery = 'FLQr';
+const uint32 kSelectDirectory = 'FSDr';
 
 #ifdef _IMPEXP_TRACKER
 _IMPEXP_TRACKER
