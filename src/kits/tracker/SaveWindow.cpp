@@ -45,7 +45,7 @@ All rights reserved.
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "Find Panel"
 
-SaveWindow::SaveWindow(BWindow *parentWindow)
+BSaveWindow::BSaveWindow(BWindow *parentWindow)
 	:
 	BWindow(BRect(), B_TRANSLATE("Save Query"), B_TITLED_WINDOW_LOOK, 
 		B_FLOATING_APP_WINDOW_FEEL, B_NOT_ZOOMABLE
@@ -55,7 +55,7 @@ SaveWindow::SaveWindow(BWindow *parentWindow)
 	// Initializing All Private Member Variables
 	fMessenger = new BMessenger(parentWindow);
 	fQueryName = new BTextControl("Query Name", B_TRANSLATE("Query Name"), "", NULL);
-	fIncludeInFavorites = new BCheckBox("Include in Favorites", 
+	fIncludeInFavorites = new BCheckBox("Include in Templates", 
 		B_TRANSLATE("Include in Favorites"), NULL);
 	fSaveInDefaultDirectory = new BCheckBox("Save In Default Directory", 
 		B_TRANSLATE("Save in Default Directory"), NULL);
@@ -86,19 +86,19 @@ SaveWindow::SaveWindow(BWindow *parentWindow)
 	CenterOnScreen();
 }
 
-SaveWindow::~SaveWindow()
+BSaveWindow::~BSaveWindow()
 {
 	// Empty Destructor
 }
 
 bool
-SaveWindow::QuitRequested()
+BSaveWindow::QuitRequested()
 {
 	return true;
 }
 
 void
-SaveWindow::MessageReceived(BMessage *message)
+BSaveWindow::MessageReceived(BMessage *message)
 {
 	switch(message->what)
 	{
@@ -119,12 +119,12 @@ SaveWindow::MessageReceived(BMessage *message)
 			bool includeInFavorites = fIncludeInFavorites->Value() == B_CONTROL_ON;
 			bool saveInDefaultDirectory = fSaveInDefaultDirectory->Value() == B_CONTROL_ON;
 			
-			BMessage *message = new BMessage(kCloseSaveQueryPanel);
-			message->AddString("Query Name", queryName);
-			message->AddBool("Include In Favorites", includeInFavorites);
-			message->AddBool("Save In Default Directory", saveInDefaultDirectory);
+			BMessage *closeMessage = new BMessage(kCloseSaveQueryPanel);
+			closeMessage->AddString("Query Name", queryName);
+			closeMessage->AddBool("Include In Favorites", includeInFavorites);
+			closeMessage->AddBool("Save In Default Directory", saveInDefaultDirectory);
 			
-			fMessenger->SendMessage(message);
+			fMessenger->SendMessage(closeMessage);
 			Quit();
 			
 			break;

@@ -51,10 +51,11 @@ class BQuery;
 class BBox;
 class BTextControl;
 class BCheckBox;
+class BMenuBar;
 class BMenuField;
 class BFile;
 class BPopUpMenu;
-class BMenuBar;
+class BGroupView;
 class BGridLayout;
 
 namespace BPrivate {
@@ -63,7 +64,6 @@ class FindPanel;
 class Model;
 class DraggableIcon;
 class TAttrView;
-class SavePanel;
 
 const uint32 kVolumeItem = 'Fvol';
 const uint32 kAttributeItemMain = 'Fatr';
@@ -72,10 +72,10 @@ const uint32 kByAttributeItem = 'Fbya';
 const uint32 kByFormulaItem = 'Fbyq';
 const uint32 kAddItem = 'Fadd';
 const uint32 kRemoveItem = 'Frem';
-const uint32 kEditFormula = 'FEFo';
-const uint32 kOptionClicked = 'FOCl';
-const uint32 kLoadQuery = 'FLQr';
-const uint32 kSelectDirectory = 'FSDr';
+
+const uint32 kOpenLoadQueryPanel = 'Folo';
+const uint32 kTemporaryOptionClicked = 'FTCl';
+const uint32 kSearchInTrashOptionClicked = 'FSCl';
 
 #ifdef _IMPEXP_TRACKER
 _IMPEXP_TRACKER
@@ -125,6 +125,7 @@ struct MoreOptionsStruct {
 	static	bool 				QueryTemporary(const BNode*);
 };
 
+
 class FindWindow : public BWindow {
 public:
 								FindWindow(const entry_ref* ref = NULL,
@@ -140,7 +141,9 @@ public:
 	const 	char* 				QueryName() const;
 
 	static 	bool 				IsQueryTemplate(BNode* file);
-			void				SetInitialOptions(bool, bool);
+			void				SetOptions(bool temporary, bool searchInTrash);
+			void				AddIconToMenuBar(BView*);
+
 protected:
 	virtual	void 				MessageReceived(BMessage* message);
 
@@ -163,12 +166,12 @@ private:
 									const BPoint* oldLocation = 0);
 
 			void 				GetDefaultName(BString&);
-			void				GetDefaultDirectory(entry_ref*) const;
 			// dynamic date is a date such as 'today'
 			void 				GetPredicateString(BString&, bool& dynamicDate);
 			
-			void				BuildMenuBar(BMenuBar*);
-			void				BuildFavoritesMenu(BMenu*);
+			void				BuildMenuBar();
+			void				PopulateFavoritesMenu();
+
 
 private:
 			BFile* 				fFile;
@@ -177,11 +180,19 @@ private:
 			bool 				fEditTemplateOnly;
 			FindPanel* 			fBackground;
 	mutable BString 			fQueryNameFromTemplate;
-			BFilePanel*			fSaveAsTemplatePanel;
+			BFilePanel* 		fSaveAsTemplatePanel;
 			BFilePanel*			fOpenQueryPanel;
-			
-			BMenuItem*			fSearchInTrash;
+
+			// Menu Bar For New Panel
+			BGroupView*			fMenuBarContainer;
+			BMenuBar*			fMenuBar;
+			BMenu*				fQueryMenu;
+			BMenu*				fOptionsMenu;
+			BMenu*				fFavoritesMenu;
+			BMenu*				fHistoryMenu;
 			BMenuItem*			fTemporary;
+			BMenuItem*			fSearchInTrash;
+
 	typedef BWindow _inherited;
 };
 
@@ -217,13 +228,13 @@ public:
 
 			void 				GetDefaultName(BString&) const;
 			void 				GetDefaultAttrName(BString&, int32) const;
-
 	// name filled out in the query name text field
 	const 	char* 				UserSpecifiedName() const;
 
 	// populate the recent query menu with query templates and recent queries
 	static 	void 				AddRecentQueries(BMenu*, bool addSaveAsItem,
-									const BMessenger* target, uint32 what);
+									const BMessenger* target, uint32 what,
+									bool includeTemplates = true);
 
 private:
 	// populates the type menu
@@ -285,9 +296,13 @@ private:
 			BMenuField* 		fMimeTypeField;
 			BPopUpMenu* 		fVolMenu;
 			BPopUpMenu*			fSearchModeMenu;
+			BPopUpMenu* 		fRecentQueries;
 			BBox* 				fMoreOptions;
 			BTextControl* 		fQueryName;
 			BString 			fInitialQueryName;
+
+			BCheckBox* 			fTemporaryCheck;
+			BCheckBox* 			fSearchTrashCheck;
 
 			DraggableIcon* 		fDraggableIcon;
 
@@ -356,6 +371,7 @@ public:
 
 protected:
 	virtual bool 				DragStarted(BMessage*);
+	virtual	void				Draw(BRect);
 };
 
 } // namespace BPrivate

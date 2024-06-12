@@ -40,14 +40,13 @@ All rights reserved.
 namespace BPrivate {
 
 const uint32 kOpenSaveQueryPanel = 'Fosv';
-const uint32 kOpenLoadQueryPanel = 'Folo';
 const uint32 kCloseSaveQueryPanel = 'Fcsv';
 const uint32 kNameEdited ='FNmE';
 
-class SaveWindow : public BWindow{
+class BSaveWindow : public BWindow{
 public:
-								SaveWindow(BWindow*);
-	virtual						~SaveWindow();
+								BSaveWindow(BWindow*);
+	virtual						~BSaveWindow();
 	virtual	bool				QuitRequested();
 
 protected:
