@@ -73,6 +73,9 @@ const uint32 kByFormulaItem = 'Fbyq';
 const uint32 kAddItem = 'Fadd';
 const uint32 kRemoveItem = 'Frem';
 
+const uint32 kClearHistory = 'FClH';
+const uint32 kClearTemplates = 'FClT';
+const uint32 kSaveQueryOrTemplate = 'FSaQ';
 const uint32 kOpenLoadQueryPanel = 'Folo';
 const uint32 kTemporaryOptionClicked = 'FTCl';
 const uint32 kSearchInTrashOptionClicked = 'FSCl';
@@ -141,7 +144,7 @@ public:
 	const 	char* 				QueryName() const;
 
 	static 	bool 				IsQueryTemplate(BNode* file);
-			void				SetOptions(bool temporary, bool searchInTrash);
+			void				SetOptions(bool searchInTrash);
 			void				AddIconToMenuBar(BView*);
 
 protected:
@@ -163,15 +166,17 @@ private:
 
 			status_t 			SaveQueryAsAttributes(BNode*, BEntry*, bool queryTemplate,
 									const BMessage* oldAttributes = 0,
-									const BPoint* oldLocation = 0);
+									const BPoint* oldLocation = 0, bool temporary = true);
 
 			void 				GetDefaultName(BString&);
 			// dynamic date is a date such as 'today'
 			void 				GetPredicateString(BString&, bool& dynamicDate);
 			
 			void				BuildMenuBar();
-			void				PopulateFavoritesMenu();
-
+			void				PopulateTemplatesMenu();
+			void				UpdateFileReferences(const entry_ref*);
+			void				ClearHistoryOrTemplates(bool clearTemplates, bool temporaryOnly);
+	static	void				ClearMenu(BMenu*);
 
 private:
 			BFile* 				fFile;
@@ -187,10 +192,10 @@ private:
 			BGroupView*			fMenuBarContainer;
 			BMenuBar*			fMenuBar;
 			BMenu*				fQueryMenu;
+			BMenuItem*			fSaveQueryOrTemplateItem;
 			BMenu*				fOptionsMenu;
-			BMenu*				fFavoritesMenu;
+			BMenu*				fTemplatesMenu;
 			BMenu*				fHistoryMenu;
-			BMenuItem*			fTemporary;
 			BMenuItem*			fSearchInTrash;
 
 	typedef BWindow _inherited;
