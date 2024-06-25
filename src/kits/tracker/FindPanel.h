@@ -177,6 +177,7 @@ private:
 			void				UpdateFileReferences(const entry_ref*);
 			void				ClearHistoryOrTemplates(bool clearTemplates, bool temporaryOnly);
 	static	void				ClearMenu(BMenu*);
+			void				DeleteQueryOrTemplate(BEntry*);
 
 private:
 			BFile* 				fFile;
@@ -196,6 +197,8 @@ private:
 			BMenu*				fOptionsMenu;
 			BMenu*				fTemplatesMenu;
 			BMenu*				fHistoryMenu;
+			BMenu*				fUnsavedHistoryMenu;
+			BMenu*				fSavedHistoryMenu;
 			BMenuItem*			fSearchInTrash;
 
 	typedef BWindow _inherited;
@@ -239,7 +242,9 @@ public:
 	// populate the recent query menu with query templates and recent queries
 	static 	void 				AddRecentQueries(BMenu*, bool addSaveAsItem,
 									const BMessenger* target, uint32 what,
-									bool includeTemplates = true);
+									bool includeTemplates = true,
+									bool includeTemporaryQueries = true,
+									bool includePersistedQueries = true);
 
 private:
 	// populates the type menu
@@ -305,9 +310,6 @@ private:
 			BBox* 				fMoreOptions;
 			BTextControl* 		fQueryName;
 			BString 			fInitialQueryName;
-
-			BCheckBox* 			fTemporaryCheck;
-			BCheckBox* 			fSearchTrashCheck;
 
 			DraggableIcon* 		fDraggableIcon;
 

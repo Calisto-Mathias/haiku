@@ -297,8 +297,14 @@ FindWindow::BuildMenuBar()
 	fTemplatesMenu = new BMenu(B_TRANSLATE("Templates"));
 
 	fHistoryMenu = new BMenu(B_TRANSLATE("History"));
-	FindPanel::AddRecentQueries(fHistoryMenu, false, new BMessenger(fBackground),
-		kSwitchToQueryTemplate, false);
+	fUnsavedHistoryMenu = new BMenu(B_TRANSLATE("Temporary Queries"));
+	fSavedHistoryMenu = new BMenu(B_TRANSLATE("Saved Queries"));
+	FindPanel::AddRecentQueries(fUnsavedHistoryMenu, false, new BMessenger(fBackground),
+		kSwitchToQueryTemplate, false, true, false);
+	FindPanel::AddRecentQueries(fSavedHistoryMenu, false, new BMessenger(fBackground),
+		kSwitchToQueryTemplate, false, false, true);
+	fHistoryMenu->AddItem(fSavedHistoryMenu);
+	fHistoryMenu->AddItem(fUnsavedHistoryMenu);
 
 	fQueryMenu->AddItem(fSaveQueryOrTemplateItem);
 	fQueryMenu->AddItem(new BMenuItem(B_TRANSLATE("Save As"),
@@ -354,6 +360,20 @@ FindWindow::ClearMenu(BMenu* menu)
 	}
 }
 
+void
+FindWindow::DeleteQueryOrTemplate(BEntry* entry)
+{
+	if(entry->Exists()) {
+		entry_ref ref;
+		entry->GetRef(&ref);
+		if(fRef == ref) {
+			UpdateFileReferences(NULL);
+			fSaveQueryOrTemplateItem->SetEnabled(false);
+		}
+		
+		entry->Remove();
+	}
+}
 
 void
 FindWindow::ClearHistoryOrTemplates(bool clearTemplates, bool temporaryOnly)
@@ -372,13 +392,13 @@ FindWindow::ClearHistoryOrTemplates(bool clearTemplates, bool temporaryOnly)
 			entry_ref ref;
 			while(query.GetNextEntry(&entry) == B_OK) {
 				entry.GetRef(&ref);
-				if(FSInTrashDir(&ref))
+				if(FSInTrashDir(&ref) && !BEntry(&ref).Exists())
 					continue;
 				char type[B_MIME_TYPE_LENGTH];
 				BNodeInfo(new BNode(&entry)).GetType(type);
 				if(strcmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0) {
 					if(clearTemplates)
-						entry.Remove();
+						DeleteQueryOrTemplate(&entry);
 					else
 						continue;
 				}
@@ -389,10 +409,10 @@ FindWindow::ClearHistoryOrTemplates(bool clearTemplates, bool temporaryOnly)
 					if(file.ReadAttr("_trk/temporary", B_BOOL_TYPE, 0, &isTemporary,
 						sizeof(isTemporary)) == sizeof(isTemporary)) {
 						if(!temporaryOnly)
-							entry.Remove();
+							DeleteQueryOrTemplate(&entry);
 						else{
 							if(isTemporary)
-								entry.Remove();
+								DeleteQueryOrTemplate(&entry);
 						}
 					}
 				}
@@ -400,15 +420,26 @@ FindWindow::ClearHistoryOrTemplates(bool clearTemplates, bool temporaryOnly)
 		}
 	}
 
-	ClearMenu(clearTemplates ? fTemplatesMenu: fHistoryMenu);
-
-	if(clearTemplates)
-		PopulateTemplatesMenu();
-	else
-		FindPanel::AddRecentQueries(fHistoryMenu, false, new BMessenger(fBackground),
-			kSwitchToQueryTemplate, false);
+	if(clearTemplates) {
+		ClearMenu(fTemplatesMenu);
+	} else {
+		ClearMenu(fUnsavedHistoryMenu);
+		ClearMenu(fSavedHistoryMenu);
+		FindPanel::AddRecentQueries(fUnsavedHistoryMenu, false, new BMessenger(fBackground),
+			kSwitchToQueryTemplate, false, true, false);
+		FindPanel::AddRecentQueries(fSavedHistoryMenu, false, new BMessenger(fBackground),
+			kSwitchToQueryTemplate, false, false, true);
+	}
 }
 
+void WriteToFile(const entry_ref ref)
+{
+	BFile *file = new BFile("/boot/home/Desktop/filesLog.txt", B_WRITE_ONLY | B_CREATE_FILE);
+	const char* path = BPath(&ref).Path();
+	file->Write(path, strlen(path));
+	file->Write("\n", 1);
+	file->Unset();
+}
 
 void
 FindWindow::PopulateTemplatesMenu()
@@ -431,12 +462,13 @@ FindWindow::PopulateTemplatesMenu()
 
 				char type[B_MIME_TYPE_LENGTH];
 				BNodeInfo(new BNode(&ref)).GetType(type);
-				if(strcmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0) {
+				if(strcmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0 && BEntry(&ref).Exists()) {
 					BMessage* message = new BMessage(kSwitchToQueryTemplate);
 					message->AddRef("refs", &ref);
 					BMenuItem* item = new IconMenuItem(ref.name, message, type);
 					item->SetTarget(BMessenger(fBackground));
 					fTemplatesMenu->AddItem(item);
+					WriteToFile(ref);
 				}
 			}
 		}
@@ -1098,10 +1130,6 @@ FindPanel::FindPanel(BFile* node, FindWindow* parent, bool fromTemplate,
 		fDraggableIcon->SetViewCursor(&grabCursor);
 	}
 
-	fQueryName = new BTextControl("query name", B_TRANSLATE("Query name:"),
-		"", NULL, B_WILL_DRAW | B_NAVIGABLE | B_NAVIGABLE_JUMP);
-	FillCurrentQueryName(fQueryName, parent);
-
 	// add Search button
 	BButton* button;
 	if (editTemplateOnly) {
@@ -1184,7 +1212,6 @@ FindPanel::AttachedToWindow()
 
 	BNode* node = findWindow->QueryNode();
 	fSearchModeMenu->SetTargetForItems(this);
-	fQueryName->SetTarget(this);
 	RestoreMimeTypeMenuSelection(node);
 		// preselect the mime we used the last time have to do it here
 		// because AddByAttributeItems will build different menus based
@@ -1834,10 +1861,7 @@ FindPanel::GetDefaultName(BString& name) const
 const char*
 FindPanel::UserSpecifiedName() const
 {
-	if (fQueryName->Text()[0] == '\0')
-		return NULL;
-
-	return fQueryName->Text();
+	return NULL;
 }
 
 
@@ -2261,7 +2285,8 @@ AddOneRecentItem(const entry_ref* ref, void* castToParams)
 
 void
 FindPanel::AddRecentQueries(BMenu* menu, bool addSaveAsItem,
-	const BMessenger* target, uint32 what, bool includeTemplates)
+	const BMessenger* target, uint32 what, bool includeTemplates, bool includeTemporaryQueries,
+	bool includePersistedQueries)
 {
 	BObjectList<entry_ref> templates(10, true);
 	BObjectList<EntryWithDate> recentQueries(10, true);
@@ -2289,15 +2314,25 @@ FindPanel::AddRecentQueries(BMenu* menu, bool addSaveAsItem,
 				BNode node(&ref);
 				BNodeInfo(&node).GetType(type);
 
-				if (strcasecmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0 && includeTemplates)
-					templates.AddItem(new entry_ref(ref));
-				else {
-					uint32 changeTime;
-					if (node.ReadAttr(kAttrQueryLastChange, B_INT32_TYPE, 0,
-						&changeTime, sizeof(uint32)) != sizeof(uint32))
-						continue;
-
-					recentQueries.AddItem(new EntryWithDate(ref, changeTime));
+				BEntry entry(&ref);
+				if(entry.Exists()) {
+					if (strcasecmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0 && includeTemplates)
+						templates.AddItem(new entry_ref(ref));
+					else {
+						uint32 changeTime;
+						if (node.ReadAttr(kAttrQueryLastChange, B_INT32_TYPE, 0,
+							&changeTime, sizeof(uint32)) != sizeof(uint32))
+							continue;
+							
+						bool isTemporary;
+						if(node.ReadAttr("_trk/temporary", B_BOOL_TYPE, 0, &isTemporary,
+						sizeof(isTemporary)) == sizeof(isTemporary)) {
+							if(isTemporary && includeTemporaryQueries)
+								recentQueries.AddItem(new EntryWithDate(ref, changeTime));
+							else if(!isTemporary && includePersistedQueries)
+								recentQueries.AddItem(new EntryWithDate(ref, changeTime));
+						}
+					}
 				}
 			}
 		}
@@ -2645,17 +2680,6 @@ FindPanel::RestoreWindowState(const BNode* node)
 		saveMoreOptions.showMoreOptions = true; // Now unused
 
 		static_cast<FindWindow*>(Window())->SetOptions(saveMoreOptions.searchTrash);
-
-		fQueryName->SetModificationMessage(NULL);
-		FindWindow* findWindow = dynamic_cast<FindWindow*>(Window());
-		if (findWindow != NULL)
-			FillCurrentQueryName(fQueryName, findWindow);
-
-		// set modification message after checking the temporary check box,
-		// and filling out the text control so that we do not always trigger
-		// clearing of the temporary check box.
-		fQueryName->SetModificationMessage(
-			new BMessage(kNameModifiedMessage));
 	}
 
 	// get volumes to perform query on
