@@ -171,7 +171,7 @@ private:
 			void 				GetDefaultName(BString&);
 			// dynamic date is a date such as 'today'
 			void 				GetPredicateString(BString&, bool& dynamicDate);
-			
+
 			void				BuildMenuBar();
 			void				PopulateTemplatesMenu();
 			void				UpdateFileReferences(const entry_ref*);
@@ -185,7 +185,7 @@ private:
 			bool 				fEditTemplateOnly;
 			FindPanel* 			fBackground;
 	mutable BString 			fQueryNameFromTemplate;
-			BFilePanel* 		fSaveAsTemplatePanel;
+			BFilePanel* 		fSaveAsPanel;
 			BFilePanel*			fOpenQueryPanel;
 
 			// Menu Bar For New Panel

@@ -5,11 +5,16 @@
  * Authors:
  *		Calisto Abel Mathias, calisto.mathias.25@gmail.com
  */
-
 #ifndef _SAVE_WINDOW_H
 #define _SAVE_WINDOW_H
 
 #include <Window.h>
+
+
+class BButton;
+class BCheckBox;
+class BMessenger;
+class BTextControl;
 
 namespace BPrivate {
 
