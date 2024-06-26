@@ -432,15 +432,6 @@ FindWindow::ClearHistoryOrTemplates(bool clearTemplates, bool temporaryOnly)
 	}
 }
 
-void WriteToFile(const entry_ref ref)
-{
-	BFile *file = new BFile("/boot/home/Desktop/filesLog.txt", B_WRITE_ONLY | B_CREATE_FILE);
-	const char* path = BPath(&ref).Path();
-	file->Write(path, strlen(path));
-	file->Write("\n", 1);
-	file->Unset();
-}
-
 
 bool
 CheckForDuplicates(BObjectList<entry_ref>* list, entry_ref* ref)
