@@ -441,9 +441,26 @@ void WriteToFile(const entry_ref ref)
 	file->Unset();
 }
 
+
+bool
+CheckForDuplicates(BObjectList<entry_ref>* list, entry_ref* ref)
+{
+	// Simple Helper Function To Check For Duplicates Within an Entry List of Templates
+	int32 count = list->CountItems();
+	for(int32 i = 0;i<count;i++) {
+		if(strcmp(BPath(list->ItemAt(i)).Path(), BPath(ref).Path()) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+
 void
 FindWindow::PopulateTemplatesMenu()
 {
+	ClearMenu(fTemplatesMenu);
+	BObjectList<entry_ref> templates(10,true);
 	BVolumeRoster roster;
 	BVolume volume;
 	while(roster.GetNextVolume(&volume) == B_OK) {
@@ -462,13 +479,14 @@ FindWindow::PopulateTemplatesMenu()
 
 				char type[B_MIME_TYPE_LENGTH];
 				BNodeInfo(new BNode(&ref)).GetType(type);
-				if(strcmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0 && BEntry(&ref).Exists()) {
+				if (strcmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0 && BEntry(&ref).Exists()
+					&& CheckForDuplicates(&templates, &ref) == false) {
 					BMessage* message = new BMessage(kSwitchToQueryTemplate);
 					message->AddRef("refs", &ref);
 					BMenuItem* item = new IconMenuItem(ref.name, message, type);
 					item->SetTarget(BMessenger(fBackground));
 					fTemplatesMenu->AddItem(item);
-					WriteToFile(ref);
+					templates.AddItem(new entry_ref(ref));
 				}
 			}
 		}
