@@ -438,8 +438,9 @@ CheckForDuplicates(BObjectList<entry_ref>* list, entry_ref* ref)
 {
 	// Simple Helper Function To Check For Duplicates Within an Entry List of Templates
 	int32 count = list->CountItems();
+	BPath comparison(ref);
 	for(int32 i = 0;i<count;i++) {
-		if(strcmp(BPath(list->ItemAt(i)).Path(), BPath(ref).Path()) == 0) {
+		if(BPath(list->ItemAt(i)) == comparison) {
 			return true;
 		}
 	}
@@ -472,6 +473,9 @@ FindWindow::PopulateTemplatesMenu()
 				BNodeInfo(new BNode(&ref)).GetType(type);
 				if (strcmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0 && BEntry(&ref).Exists()
 					&& CheckForDuplicates(&templates, &ref) == false) {
+					// Checking for duplicates as BQuery returns multiple instances
+					// of the same file if they are deleted at times.
+
 					BMessage* message = new BMessage(kSwitchToQueryTemplate);
 					message->AddRef("refs", &ref);
 					BMenuItem* item = new IconMenuItem(ref.name, message, type);
