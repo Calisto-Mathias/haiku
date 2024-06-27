@@ -71,6 +71,7 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			QueryPoseView.cpp
 			RecentItems.cpp
 			RegExp.cpp
+			SaveWindow.cpp
 			SelectionWindow.cpp
 			Settings.cpp
 			SettingsViews.cpp
