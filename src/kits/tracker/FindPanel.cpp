@@ -335,14 +335,14 @@ void
 FindWindow::UpdateFileReferences(const entry_ref* ref)
 {
 	BEntry entry(ref);
-	if(!entry.Exists())
+	if (!entry.Exists())
 		return;
 
 	fFile->Unset();
 	fFile = NULL;
 	fFile = TryOpening(ref);
 
-	if(fFile != NULL) {
+	if (fFile != NULL) {
 		entry.GetRef(&fRef);
 		fFromTemplate = IsQueryTemplate(fFile);
 	}
@@ -354,7 +354,7 @@ FindWindow::ClearMenu(BMenu* menu)
 {
 
 	int32 count = menu->CountItems();
-	for(int32 i = 0;i<count;i++) {
+	for (int32 i = 0;i<count;i++) {
 		BMenuItem* item = menu->RemoveItem(0);
 		delete item;
 	}
@@ -363,10 +363,10 @@ FindWindow::ClearMenu(BMenu* menu)
 void
 FindWindow::DeleteQueryOrTemplate(BEntry* entry)
 {
-	if(entry->Exists()) {
+	if (entry->Exists()) {
 		entry_ref ref;
 		entry->GetRef(&ref);
-		if(fRef == ref) {
+		if (fRef == ref) {
 			UpdateFileReferences(NULL);
 			fSaveQueryOrTemplateItem->SetEnabled(false);
 		}
@@ -381,37 +381,37 @@ FindWindow::ClearHistoryOrTemplates(bool clearTemplates, bool temporaryOnly)
 	BVolumeRoster roster;
 	BVolume volume;
 	while(roster.GetNextVolume(&volume) == B_OK) {
-		if(volume.IsPersistent() && volume.KnowsQuery() && volume.KnowsAttr()) {
+		if (volume.IsPersistent() && volume.KnowsQuery() && volume.KnowsAttr()) {
 			BQuery query;
 			query.SetVolume(&volume);
 			query.SetPredicate("_trk/recentQuery == 1");
-			if(query.Fetch() != B_OK)
+			if (query.Fetch() != B_OK)
 				continue;
 
 			BEntry entry;
 			entry_ref ref;
 			while(query.GetNextEntry(&entry) == B_OK) {
 				entry.GetRef(&ref);
-				if(FSInTrashDir(&ref) && !BEntry(&ref).Exists())
+				if (FSInTrashDir(&ref) && !BEntry(&ref).Exists())
 					continue;
 				char type[B_MIME_TYPE_LENGTH];
 				BNodeInfo(new BNode(&entry)).GetType(type);
-				if(strcmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0) {
-					if(clearTemplates)
+				if (strcmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0) {
+					if (clearTemplates)
 						DeleteQueryOrTemplate(&entry);
 					else
 						continue;
 				}
 
-				if(!clearTemplates) {
+				if (!clearTemplates) {
 					BFile file(&entry, B_READ_ONLY);
 					bool isTemporary;
-					if(file.ReadAttr("_trk/temporary", B_BOOL_TYPE, 0, &isTemporary,
+					if (file.ReadAttr("_trk/temporary", B_BOOL_TYPE, 0, &isTemporary,
 						sizeof(isTemporary)) == sizeof(isTemporary)) {
-						if(!temporaryOnly)
+						if (!temporaryOnly)
 							DeleteQueryOrTemplate(&entry);
 						else{
-							if(isTemporary)
+							if (isTemporary)
 								DeleteQueryOrTemplate(&entry);
 						}
 					}
@@ -420,7 +420,7 @@ FindWindow::ClearHistoryOrTemplates(bool clearTemplates, bool temporaryOnly)
 		}
 	}
 
-	if(clearTemplates) {
+	if (clearTemplates) {
 		ClearMenu(fTemplatesMenu);
 	} else {
 		ClearMenu(fUnsavedHistoryMenu);
@@ -439,8 +439,8 @@ CheckForDuplicates(BObjectList<entry_ref>* list, entry_ref* ref)
 	// Simple Helper Function To Check For Duplicates Within an Entry List of Templates
 	int32 count = list->CountItems();
 	BPath comparison(ref);
-	for(int32 i = 0;i<count;i++) {
-		if(BPath(list->ItemAt(i)) == comparison) {
+	for (int32 i = 0;i<count;i++) {
+		if (BPath(list->ItemAt(i)) == comparison) {
 			return true;
 		}
 	}
@@ -456,17 +456,17 @@ FindWindow::PopulateTemplatesMenu()
 	BVolumeRoster roster;
 	BVolume volume;
 	while(roster.GetNextVolume(&volume) == B_OK) {
-		if(volume.IsPersistent() && volume.KnowsQuery() && volume.KnowsAttr()) {
+		if (volume.IsPersistent() && volume.KnowsQuery() && volume.KnowsAttr()) {
 			BQuery query;
 			query.SetVolume(&volume);
 			query.SetPredicate("_trk/recentQuery == 1");
 
-			if(query.Fetch() != B_OK)
+			if (query.Fetch() != B_OK)
 				continue;
 
 			entry_ref ref;
 			while(query.GetNextRef(&ref) == B_OK) {
-				if(FSInTrashDir(&ref))
+				if (FSInTrashDir(&ref))
 					continue;
 
 				char type[B_MIME_TYPE_LENGTH];
@@ -917,7 +917,7 @@ FindWindow::MessageReceived(BMessage* message)
 				B_WARNING_ALERT);
 			alert->SetShortcut(0, B_ESCAPE);
 			int32 choice = alert->Go();
-			if(choice)
+			if (choice)
 				ClearHistoryOrTemplates(false,choice==2);
 			break;
 		}
@@ -932,7 +932,7 @@ FindWindow::MessageReceived(BMessage* message)
 				B_WARNING_ALERT);
 				alert->SetShortcut(0, B_ESCAPE);
 				int32 choice = alert->Go();
-				if(choice==2)
+				if (choice==2)
 					ClearHistoryOrTemplates(true, false);
 				break;
 		}
@@ -951,16 +951,16 @@ FindWindow::MessageReceived(BMessage* message)
 			bool includeInTemplates;
 			bool saveInDefaultDirectory;
 
-			if(message->FindString("Query Name", &queryName) == B_OK
+			if (message->FindString("Query Name", &queryName) == B_OK
 				&& message->FindBool("Include In Templates", &includeInTemplates) == B_OK
 				&& message->FindBool("Save In Default Directory", &saveInDefaultDirectory )== B_OK) {
 
-				if(fSaveAsPanel == NULL) {
+				if (fSaveAsPanel == NULL) {
 					fSaveAsPanel = new BFilePanel(B_SAVE_PANEL,
 						new BMessenger(fBackground));
 				}
 
-				if(!saveInDefaultDirectory) {
+				if (!saveInDefaultDirectory) {
 					BMessage saveMessage(B_SAVE_REQUESTED);
 					saveMessage.AddBool("Include In Templates", includeInTemplates);
 					fSaveAsPanel->SetSaveText(B_TRANSLATE(queryName));
@@ -970,7 +970,7 @@ FindWindow::MessageReceived(BMessage* message)
 				}
 				else{
 					BPath path;
-					if(find_directory(B_USER_DIRECTORY, &path, true) == B_OK &&
+					if (find_directory(B_USER_DIRECTORY, &path, true) == B_OK &&
 						path.Append("queries") == B_OK) {
 						entry_ref userQueryDirectory;
 						BEntry(path.Path()).GetRef(&userQueryDirectory);
@@ -989,7 +989,7 @@ FindWindow::MessageReceived(BMessage* message)
 
 		case kOpenLoadQueryPanel:
 		{
-			if(fOpenQueryPanel == NULL) {
+			if (fOpenQueryPanel == NULL) {
 				fOpenQueryPanel = new BFilePanel(B_OPEN_PANEL, new BMessenger(fBackground));
 			}
 
@@ -2328,7 +2328,7 @@ FindPanel::AddRecentQueries(BMenu* menu, bool addSaveAsItem,
 				BNodeInfo(&node).GetType(type);
 
 				BEntry entry(&ref);
-				if(entry.Exists()) {
+				if (entry.Exists()) {
 					if (strcasecmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0 && includeTemplates)
 						templates.AddItem(new entry_ref(ref));
 					else {
@@ -2338,11 +2338,11 @@ FindPanel::AddRecentQueries(BMenu* menu, bool addSaveAsItem,
 							continue;
 							
 						bool isTemporary;
-						if(node.ReadAttr("_trk/temporary", B_BOOL_TYPE, 0, &isTemporary,
+						if (node.ReadAttr("_trk/temporary", B_BOOL_TYPE, 0, &isTemporary,
 						sizeof(isTemporary)) == sizeof(isTemporary)) {
-							if(isTemporary && includeTemporaryQueries)
+							if (isTemporary && includeTemporaryQueries)
 								recentQueries.AddItem(new EntryWithDate(ref, changeTime));
-							else if(!isTemporary && includePersistedQueries)
+							else if (!isTemporary && includePersistedQueries)
 								recentQueries.AddItem(new EntryWithDate(ref, changeTime));
 						}
 					}
