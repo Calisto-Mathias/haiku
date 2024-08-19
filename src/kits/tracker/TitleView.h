@@ -40,7 +40,6 @@ All rights reserved.
 #include <ObjectList.h>
 #include <View.h>
 
-
 namespace BPrivate {
 
 
@@ -48,6 +47,7 @@ class BPoseView;
 class BColumn;
 class BColumnTitle;
 class BQueryPoseView;
+class ColumnResizeState;
 class ColumnTrackState;
 class OffscreenBitmap;
 
@@ -84,13 +84,17 @@ public:
 
 	BPoseView* PoseView() const;
 
-protected:
-	void MouseMoved(BPoint, uint32, const BMessage*);
 	BColumnTitle* FindColumnTitle(BPoint) const;
 	BColumnTitle* InColumnResizeArea(BPoint) const;
 	BColumnTitle* FindColumnTitle(const BColumn*) const;
 
 protected:
+	void MouseMoved(BPoint, uint32, const BMessage*);
+	
+	virtual ColumnResizeState* CreateColumnResizeState(BTitleView* titleView, BColumnTitle*,
+		BPoint, bigtime_t);
+
+private:
 	BPoseView* fPoseView;
 	BObjectList<BColumnTitle> fTitleList;
 	BCursor fHorizontalResizeCursor;
@@ -109,11 +113,14 @@ protected:
 };
 
 
-class BQueryTitleView : public BTitleView {
+class BQueryTitleView : public BTitleView
+{
 public:
-								BQueryTitleView(BQueryPoseView*);
-	virtual						~BQueryTitleView();
-	using BTitleView::FindColumnTitle;
+	BQueryTitleView(BQueryPoseView*);
+	~BQueryTitleView();
+	
+	virtual ColumnResizeState* CreateColumnResizeState(BTitleView*, BColumnTitle*,
+		BPoint, bigtime_t);
 };
 
 
@@ -183,13 +190,20 @@ private:
 };
 
 
-class QueryColumnResizeState : public ColumnResizeState {
+class QueryColumnResizeState : public ColumnResizeState 
+{
 public:
-	QueryColumnResizeState(BTitleView* titleView, BColumnTitle* columnTitle,
-		BPoint where, bigtime_t pastClickTime);
+	QueryColumnResizeState(BTitleView* titleView, BColumnTitle*, BPoint where,
+		bigtime_t pastClickTime);
+	~QueryColumnResizeState();
+
 protected:
 	virtual void Moved(BPoint where, uint32 buttons);
+
+private:
+	typedef ColumnResizeState _inherited;
 };
+
 
 class ColumnDragState : public ColumnTrackState {
 public:

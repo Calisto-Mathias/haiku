@@ -1,78 +1,35 @@
 #include "TAttributeColumn.h"
 
 
-#include <utility>
 #include <iostream>
-#include <OS.h>
-
 #include <fs_attr.h>
 
 #include <Box.h>
-#include <Catalog.h>
 #include <GroupView.h>
 #include <LayoutBuilder.h>
-#include <Locale.h>
 #include <Message.h>
 #include <PopUpMenu.h>
-#include <Query.h>
-#include <Size.h>
 #include <StringView.h>
-#include <View.h>
 
-#include "PopUpTextControl.h"
-#include "PoseView.h"
 #include "TAttributeSearchField.h"
 #include "TFindPanel.h"
+#include "TFindPanelConstants.h"
 #include "TitleView.h"
+#include "TPopUpTextControl.h"
+#include "ViewState.h"
 
-
-#undef B_TRANSLATION_CONTEXT
-#define B_TRANSLATION_CONTEXT "FindPanel"
 
 namespace BPrivate {
 
-static const char* combinationOperators[] = {
-	B_TRANSLATE_MARK("and"),
-	B_TRANSLATE_MARK("or"),
-};
-
-static const int32 combinationOperatorsLength = sizeof(combinationOperators) / sizeof(
-	combinationOperators[0]);
-
-static const char* regularAttributeOperators[] = {
-	B_TRANSLATE_MARK("contains"),
-	B_TRANSLATE_MARK("is"),
-	B_TRANSLATE_MARK("is not"),
-	B_TRANSLATE_MARK("starts with"),
-	B_TRANSLATE_MARK("ends with")
-};
-
-static const int32 regularAttributeOperatorsLength = sizeof(regularAttributeOperators) / 
-	sizeof(regularAttributeOperators[0]);
-
-static const char* sizeAttributeOperators[] = {
-	B_TRANSLATE_MARK("greater than"),
-	B_TRANSLATE_MARK("less than"),
-	B_TRANSLATE_MARK("is")
-};
-
-static const int32 sizeAttributeOperatorsLength = sizeof(sizeAttributeOperators) / sizeof(
-	sizeAttributeOperators[0]);
-
-static const char* modifiedAttributeOperators[] = {
-	B_TRANSLATE_MARK("before"),
-	B_TRANSLATE_MARK("after")
-};
-
-static const int32 modifiedAttributeOperatorsLength = sizeof(modifiedAttributeOperators) /
-	sizeof(modifiedAttributeOperators[0]);
-
-TAttributeColumn::TAttributeColumn(BColumnTitle* title)
+TAttributeColumn::TAttributeColumn(BColumn* column, BColumnTitle* columnTitle,
+	TFindPanel* findPanel)
 	:
 	BView("attribute-column", B_WILL_DRAW),
-	fColumnTitle(title)
+	fColumn(column),
+	fColumnTitle(columnTitle),
+	fFindPanel(findPanel)
 {
-	BRect titleBounds = title->Bounds();
+	BRect titleBounds = columnTitle->Bounds();
 	BSize size(titleBounds.Width(), B_SIZE_UNSET);
 	SetSize(size);
 }
@@ -80,20 +37,40 @@ TAttributeColumn::TAttributeColumn(BColumnTitle* title)
 
 TAttributeColumn::~TAttributeColumn()
 {
-	// Empty Destructor
 }
 
 
-status_t
-TAttributeColumn::SetSize(BSize size)
+void
+TAttributeColumn::MessageReceived(BMessage* message)
 {
-	fSize = size;
-	SetExplicitPreferredSize(fSize);
-	SetExplicitSize(fSize);
-	ResizeTo(fSize);
-	Invalidate();
-	
-	return B_OK;
+	switch (message->what) {
+		case kResizeHeight:
+		{
+			float height;
+			if (message->FindFloat("height", &height) != B_OK)
+				break;
+			
+			HandleColumnResize(height);
+			break;
+		}
+		
+		case kResizeColumn:
+		{
+			HandleColumnWidthResize();
+		}
+		
+		case kMoveColumn:
+		{
+			HandleColumnMoved();
+			break;
+		}
+
+		default:
+		{
+			_inherited::MessageReceived(message);
+			break;
+		}
+	}
 }
 
 
@@ -109,32 +86,66 @@ TAttributeColumn::GetSize(BSize* size) const
 
 
 status_t
-TAttributeColumn::SetColumnTitle(BColumnTitle* title)
+TAttributeColumn::SetSize(BSize size)
 {
-	if (title == NULL)
-		return B_BAD_VALUE;
-	
-	fColumnTitle = title;
-	BRect bounds = title->Bounds();
-	BSize size(bounds.Width(), B_SIZE_UNSET);
-	
-	return SetSize(size);
+	fSize = size;
+	SetExplicitPreferredSize(size);
+	SetExplicitSize(size);
+	ResizeTo(fSize);
+	Invalidate();
+	return B_OK;
 }
 
+//TODO: Implement checks to see whether the ColumnTitleView is still valid
 
 status_t
-TAttributeColumn::GetColumnTitle(BColumnTitle** title) const
+TAttributeColumn::GetColumnTitle(BColumnTitle** titleView) const
 {
-	if (title == NULL)
+	if (titleView == NULL)
 		return B_BAD_VALUE;
-
-	*title = fColumnTitle;
+	
+	*titleView = fColumnTitle;
 	return B_OK;
 }
 
 
 status_t
-TAttributeColumn::HandleColumnUpdate(float parentHeight)
+TAttributeColumn::SetColumnTitle(BColumnTitle** titleView)
+{
+	if (titleView == NULL)
+		return B_BAD_VALUE;
+	
+	fColumnTitle = *titleView;
+	BRect bounds = fColumnTitle->Bounds();
+	BSize size(bounds.Width(), B_SIZE_UNSET);
+	return SetSize(size);
+}
+
+
+status_t
+TAttributeColumn::GetColumn(BColumn** column) const
+{
+	if (column == NULL)
+		return B_OK;
+	
+	*column = fColumn;
+	return B_OK;
+}
+
+
+status_t
+TAttributeColumn::SetColumn(BColumn** column)
+{
+	if (column == NULL)
+		return B_BAD_VALUE;
+	
+	fColumn = *column;
+	return B_OK;
+}
+
+
+status_t
+TAttributeColumn::HandleColumnResize(float parentHeight)
 {
 	BRect bounds = fColumnTitle->Bounds();
 	BSize size(bounds.Width(), parentHeight);
@@ -148,109 +159,38 @@ TAttributeColumn::HandleColumnUpdate(float parentHeight)
 }
 
 
-BMessage
-TAttributeSearchColumn::ArchiveToMessage()
+status_t
+TAttributeColumn::HandleColumnWidthResize()
 {
-	BMessage searchColumnMessage;
+	BRect bounds = fColumnTitle->Bounds();
 	
-	int32 attrType = static_cast<int32>(fAttrType);
-	searchColumnMessage.AddInt32("attr-type", attrType);
+	BSize previousSize;
+	status_t error;
+	if ((error = GetSize(&previousSize)) != B_OK)
+		return error;
 	
-	int32 count = fSearchFields->CountItems();
-	for (int32 i = 0; i < count; ++i) {
-		TAttributeSearchField* searchField = fSearchFields->ItemAt(i);
-		BMessage searchFieldMessage = searchField->ArchiveToMessage();
-		searchColumnMessage.AddMessage("search-field", &searchFieldMessage);
-	}
-	return searchColumnMessage;
+	BSize newSize(bounds.Width(), previousSize.Height());
+	if ((error = SetSize(newSize)) != B_OK)
+		return error;
+	
+	return B_OK;
 }
 
 
-void
-TAttributeSearchColumn::RestoreFromMessage(const BMessage* message)
+
+status_t
+TAttributeColumn::HandleColumnMoved()
 {
-	if (message == NULL)
-		return;
-	
-	int32 countOfChildren = fSearchFields->CountItems();
-	for (int32 i = 0; i < countOfChildren; ++i) {
-		fSearchFields->ItemAt(i)->RemoveSelf();
-	}
-	fSearchFields->MakeEmpty();
-	
-	int32 attrType;
-	message->FindInt32("attr-type", &attrType);
-	fAttrType = static_cast<AttrType>(attrType);
-	
-	int32 countOfSearchFields = -1;
-	message->GetInfo("search-field", NULL, &countOfSearchFields);
-	for (int32 i = 0; i < countOfSearchFields; ++i) {
-		TAttributeSearchField* searchField = new TAttributeSearchField(this, fAttrType,
-			fColumnTitle->Column()->AttrName());
-		BMessage searchFieldMessage;
-		message->FindMessage("search-field", i, &searchFieldMessage);
-		
-		const char* textControlLabel;
-		searchFieldMessage.FindString("text-control", &textControlLabel);
-		searchField->fTextControl->SetText(textControlLabel);
-		
-		int32 labelCounts = -1;
-		searchFieldMessage.GetInfo("menu-item", NULL, &labelCounts);
-		std::cout<<labelCounts<<std::endl;
-		for (int32 i = 0; i < labelCounts; ++i) {
-			const char* label;
-			searchFieldMessage.FindString("menu-item", i, &label);
-			for (int32 i = 0; i < searchField->fTextControl->PopUpMenu()->CountItems(); ++i) {
-				BMenuItem* item = searchField->fTextControl->PopUpMenu()->ItemAt(i);
-				if (strcmp(label, item->Label()) == 0) {
-					item->SetMarked(true);
-				} else {
-					item->SetMarked(false);
-				}
-			}
-		}
-		
-		fSearchFields->AddItem(searchField);
-		fContainerView->GroupLayout()->AddView(searchField);
-	}
+	BRect bounds = fColumnTitle->Bounds();
+	MoveTo(bounds.left, 0);
+	return B_OK;
 }
 
 
-void
-TAttributeColumn::MessageReceived(BMessage* message)
-{
-	switch (message->what) {
-		case kResizeHeight:
-		case kMoveColumn:
-		{
-			float height = 0.0f;
-			if (message->FindFloat("height", &height) != B_OK)
-				break;
-			HandleColumnUpdate(height);
-			break;
-		}
-		
-		case kRemoveColumn:
-		{
-			std::cout<<"I'm in the remover"<<std::endl;
-			break;
-		}
-		
-		default:
-		{
-			__inherited::MessageReceived(message);
-			break;
-		}
-	}
-}
-
-
-TAttributeSearchColumn::TAttributeSearchColumn(BColumnTitle* title, BView* parent, AttrType type)
+TAttributeSearchColumn::TAttributeSearchColumn(BColumn* column, BColumnTitle* columnTitle,
+	TFindPanel* findPanel)
 	:
-	TAttributeColumn(title),
-	fAttrType(type),
-	fSearchFields(new BObjectList<TAttributeSearchField>(10, true)),
-	fParent(parent),
+	TAttributeColumn(column, columnTitle, findPanel),
 	fContainerView(new BGroupView(B_VERTICAL, 2.0f)),
 	fBox(new BBox("container-box"))
 {
@@ -258,154 +198,178 @@ TAttributeSearchColumn::TAttributeSearchColumn(BColumnTitle* title, BView* paren
 	fBox->AddChild(fContainerView);
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0.0f)
 		.AddGlue()
-		.Add(fBox);
-		// .AddGlue();
+		.Add(fBox)
+	.End();
 }
 
 
 TAttributeSearchColumn::~TAttributeSearchColumn()
 {
-	fSearchFields->MakeEmpty();
-	delete fSearchFields;
 }
 
 
-void
-TAttributeSearchColumn::SetColumnCombinationMode(ColumnCombinationMode mode)
+TAttributeSearchColumn*
+TAttributeSearchColumn::CreateSearchColumnForAttributeType(AttributeType type, BColumn* column,
+	BColumnTitle* columnTitle, TFindPanel* findPanel)
 {
-	fCombinationMode = mode;
-}
-
-
-status_t
-TAttributeSearchColumn::GetColumnCombinationMode(ColumnCombinationMode* mode) const
-{
-	if (mode == NULL)
-		return B_BAD_VALUE;
-	*mode = fCombinationMode;
-	return B_OK;
-}
-
-
-status_t
-TAttributeSearchColumn::GetPredicateString(BString* predicateString) const
-{
-	if (predicateString == NULL)
-		return B_BAD_VALUE;
-	
-	BString attrName = fColumnTitle->Column()->AttrName();
-	attrName.ReplaceFirst("_stat/", "");
-	
-	BQuery columnPredicateGenerator;
-	int32 numberOfSearchFields = fSearchFields->CountItems();
-	for (int32 i = 0; i < numberOfSearchFields; ++i) {
-		TAttributeSearchField* searchField = fSearchFields->ItemAt(i);
-		
-		const char* searchFieldText = searchField->TextControl()->Text();
-		if (strcmp(searchFieldText, "") == 0)
+	switch (type) {
+		case AttributeType::NUMERIC:
+		{
+			return new TNumericAttributeSearchColumn(column, columnTitle, findPanel);
 			break;
-
-		columnPredicateGenerator.PushAttr(attrName.String());
-		columnPredicateGenerator.PushString(searchField->TextControl()->Text(), true);
-		query_op attributeOperator;
-		searchField->GetAttributeOperator(&attributeOperator);
-		columnPredicateGenerator.PushOp(attributeOperator);
+		}
 		
-		query_op combinationOperator;
-		if (searchField->GetCombinationOperator(&combinationOperator) == B_OK)
-			columnPredicateGenerator.PushOp(combinationOperator);
+		case AttributeType::TEMPORAL:
+		{
+			return new TTemporalAttributeSearchColumn(column, columnTitle, findPanel);
+			break;
+		}
+		
+		case AttributeType::STRING:
+		{
+			return new TStringAttributeSearchColumn(column, columnTitle, findPanel);
+			break;
+		}
+		
+		default:
+		{
+			return NULL;
+			break;
+		}
+	}
+}
+
+
+TAttributeSearchField*
+TAttributeSearchColumn::CreateAttributeSearchField()
+{
+	// Child Classes must implement their own version of this function!
+	return NULL;
+}
+
+
+status_t
+TAttributeSearchColumn::ResetStateForFirstSearchField()
+{
+	int32 numberOfSearchFields = fSearchFields.CountItems();
+	if (numberOfSearchFields == 0)
+		return B_BAD_VALUE;
+	TAttributeSearchField* firstSearchField = fSearchFields.ItemAt(0);
+	
+	if (firstSearchField == NULL)
+		return B_BAD_VALUE;
+	
+	firstSearchField->EnableRemoveButton(numberOfSearchFields > 1);
+	for (int32 i = 0; i < combinationOperatorsLength; ++i) {
+		BMenuItem* combinationMenuItem = firstSearchField->TextControl()->PopUpMenu()->ItemAt(i);
+		combinationMenuItem->SetEnabled(false);
+		combinationMenuItem->SetMarked(false);
 	}
 	
-	columnPredicateGenerator.GetPredicate(predicateString);
-	return B_OK;
+	return firstSearchField->UpdateLabel();
+}
+
+
+status_t
+TAttributeSearchColumn::AddSearchField(const TAttributeSearchField* after)
+{
+	if (after == NULL)
+		return AddSearchField();
+	
+	int32 index = fSearchFields.IndexOf(after);
+	if (index == -1)
+		return B_BAD_VALUE;
+	
+	return AddSearchField(index + 1);
 }
 
 
 status_t
 TAttributeSearchColumn::AddSearchField(int32 index)
 {
+	if (index < -1)
+		return B_BAD_VALUE;
+
+	int32 numberOfPresentSearchFields = fSearchFields.CountItems();
+
 	if (index == -1)
-		index = fSearchFields->CountItems();
+		index = numberOfPresentSearchFields;
 	
-	TAttributeSearchField* searchField = new TAttributeSearchField(this, fAttrType,
-		fColumnTitle->Column()->AttrName());
-	fSearchFields->AddItem(searchField, index);
-	fContainerView->GroupLayout()->AddView(index, searchField);
+	TAttributeSearchField* searchField = CreateAttributeSearchField();
 	
-	int32 count = fSearchFields->CountItems();
-	TAttributeSearchField* firstSearchField = fSearchFields->ItemAt(0);
-	firstSearchField->EnableRemoveButton(count > 1);
-	for (int32 i = 0; i < combinationOperatorsLength; ++i) {
-		BMenuItem* combinationMenuItem = firstSearchField->TextControl()->PopUpMenu()->ItemAt(i);
-		combinationMenuItem->SetEnabled(false);
-		combinationMenuItem->SetMarked(false);
-	}
-	firstSearchField->UpdateLabel();
+	fSearchFields.AddItem(searchField, index);
+	if (fContainerView && fContainerView->GroupLayout())
+		fContainerView->GroupLayout()->AddView(index, searchField);
 	
-	float height = 0.0f;
-	BSize searchFieldHeight;
-	status_t error;
-	if ((error = firstSearchField->GetRequiredHeight(&searchFieldHeight)) != B_OK)
-		return error;
-	height += count * searchFieldHeight.height;
-	height += count * 3.0f;
-	height += 4.0f;
+	++numberOfPresentSearchFields;
 	
-	BSize boxHeight(B_SIZE_UNSET, height);
-	if ((error = ResizeBox(boxHeight)) != B_OK)
-		return error;
+	ResetStateForFirstSearchField();
+	
+	BSize requiredSize;
+	GetRequiredSize(&requiredSize);
+	SetBoxSize(requiredSize);
+
+	return B_OK;
+}
+
+
+status_t
+TAttributeSearchColumn::RemoveSearchField(TAttributeSearchField* searchField)
+{
+	if (searchField == NULL)
+		return B_BAD_VALUE;
+	
+	if (fSearchFields.RemoveItem(searchField, false) == false)
+		return B_BAD_VALUE;
+	
+	searchField->RemoveSelf();
+	delete searchField;
+	searchField = NULL;
+	
+	BSize refreshedSize;
+	GetRequiredSize(&refreshedSize);
+	SetBoxSize(refreshedSize);
+	
+	if (fSearchFields.CountItems() == 1)
+		ResetStateForFirstSearchField();
 	
 	return B_OK;
 }
 
 
 status_t
-TAttributeSearchColumn::AddSearchField(TAttributeSearchField* after)
+TAttributeSearchColumn::GetRequiredSize(BSize* size) const
 {
-	if (after == NULL)
-		return AddSearchField();
-
-	int32 index = fSearchFields->IndexOf(after);
-	if (index == -1)
+	if (size == NULL)
 		return B_BAD_VALUE;
 	
-	return AddSearchField(index+1);
+	if (fSearchFields.CountItems() == 0)
+		return B_ENTRY_NOT_FOUND;
+	
+	float height = 0.0f;
+	BSize searchFieldSize;
+	status_t error;
+	if ((error = fSearchFields.ItemAt(0)->GetRequiredSize(&searchFieldSize)) != B_OK)
+		return error;
+
+	int32 numberOfSearchFields = fSearchFields.CountItems();
+	const int32 PADDING_BETWEEN_SEARCH_FIELDS = 3.0f;
+	const int32 OVERALL_PADDING = 4.0f;
+	height += numberOfSearchFields * searchFieldSize.Height();
+	height += numberOfSearchFields * PADDING_BETWEEN_SEARCH_FIELDS;
+	height += OVERALL_PADDING;
+	
+	*size = BSize(B_SIZE_UNSET, height);
+	return B_OK;
 }
 
 
 status_t
-TAttributeSearchColumn::RemoveSearchField(TAttributeSearchField* field)
+TAttributeSearchColumn::SetBoxSize(BSize size)
 {
-	if (field == NULL)
+	if (size.Height() < 0)
 		return B_BAD_VALUE;
 	
-	if (fSearchFields->RemoveItem(field, false)) {
-		field->RemoveSelf();
-		delete field;
-	
-		TAttributeSearchField* firstSearchField = fSearchFields->ItemAt(0);
-		int32 count = fSearchFields->CountItems();
-	
-		float height = 0.0f;
-		BSize searchFieldHeight;
-		status_t error;
-		if ((error = firstSearchField->GetRequiredHeight(&searchFieldHeight)) != B_OK)
-			return error;
-		height += count * searchFieldHeight.height;
-		height += count * 3.0f;
-		height += 4.0f;
-		BSize boxHeight(B_SIZE_UNSET, height);
-		ResizeBox(boxHeight);
-		return B_OK;
-	} else {
-		return B_BAD_VALUE;
-	}
-}
-
-
-status_t
-TAttributeSearchColumn::ResizeBox(BSize size)
-{
 	fBox->ResizeTo(size);
 	fBox->SetExplicitSize(size);
 	fBox->SetExplicitPreferredSize(size);
@@ -414,29 +378,10 @@ TAttributeSearchColumn::ResizeBox(BSize size)
 
 
 status_t
-TAttributeSearchColumn::GetBoxSize(BSize* size) const
+TAttributeSearchColumn::GetPredicateString(BString* predicateString) const
 {
-	if (size == NULL)
-		return B_BAD_VALUE;
-	
-	*size = fBox->PreferredSize();
+	// Must be implemented by derived class!
 	return B_OK;
-}
-
-
-status_t
-TAttributeSearchColumn::GetRequiredHeight(BSize* size) const
-{
-	if (size == NULL)
-		return B_BAD_VALUE;
-
-	int32 count = fSearchFields->CountItems();
-	if (count == 0) {
-		*size = BSize(0.0f, 0.0f);
-		return B_OK;
-	}
-	
-	return GetBoxSize(size);
 }
 
 
@@ -444,48 +389,306 @@ void
 TAttributeSearchColumn::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
-		case kModifiedField:
-		{
-			BString predicateString;
-			GetPredicateString(&predicateString);
-			BMessenger(fParent).SendMessage(new BMessage(message->what));
-			break;
-		}
-		
 		case kAddSearchField:
 		{
 			TAttributeSearchField* source = NULL;
-			if (message->FindPointer("pointer", (void**)&source) != B_OK)
+		
+			status_t error;
+			if ((error = message->FindPointer("pointer", reinterpret_cast<void**>(&source)))
+				!= B_OK) {
 				source = NULL;
-
+			}
+			
 			AddSearchField(source);
-			BMessenger(fParent).SendMessage(kResizeHeight);
+			BMessenger(fFindPanel).SendMessage(kResizeHeight);
 			break;
 		}
 		
 		case kRemoveSearchField:
 		{
 			TAttributeSearchField* source = NULL;
-			if (message->FindPointer("pointer", (void**)&source) != B_OK || source == NULL)
-				break;
+			status_t error;
+			if ((error = message->FindPointer("pointer", reinterpret_cast<void**>(&source)))
+				!= B_OK) {
+				source = NULL;
+			}
 			
 			RemoveSearchField(source);
-			BMessenger(fParent).SendMessage(kResizeHeight);
+			BMessenger(fFindPanel).SendMessage(kResizeHeight);
 			break;
 		}
 		
 		default:
 		{
-			__inherited::MessageReceived(message);
+			_inherited::MessageReceived(message);
 			break;
 		}
 	}
 }
 
 
-TDisabledSearchColumn::TDisabledSearchColumn(BColumnTitle* title)
+TNumericAttributeSearchColumn::TNumericAttributeSearchColumn(BColumn* column,
+	BColumnTitle* columnTitle, TFindPanel* findPanel)
 	:
-	TAttributeColumn(title)
+	TAttributeSearchColumn(column, columnTitle, findPanel)
+{
+}
+
+
+TNumericAttributeSearchColumn::~TNumericAttributeSearchColumn()
+{
+}
+
+
+TAttributeSearchField*
+TNumericAttributeSearchColumn::CreateAttributeSearchField()
+{
+	TNumericAttributeSearchField* searchField = new TNumericAttributeSearchField(this);
+	return searchField;
+}
+
+
+status_t
+TNumericAttributeSearchColumn::GetPredicateString(BString* predicateString) const
+{
+	if (predicateString == NULL)
+		return B_BAD_VALUE;
+	
+	BString attributeName = fColumn->AttrName();
+	attributeName.ReplaceFirst("_stat/", "");
+	
+	BString columnPredicateString = "";
+	int32 numberOfSearchFields = fSearchFields.CountItems();
+	for (int32 i = 0; i < numberOfSearchFields; ++i) {
+		TAttributeSearchField* searchField = fSearchFields.ItemAt(i);
+		BString searchFieldText(searchField->TextControl()->Text());
+		if (searchFieldText == "")
+			continue;
+		
+		if (i != 0) {
+			status_t error;
+			query_op combinationOperator;
+			if ((error = searchField->GetCombinationOperator(&combinationOperator)) != B_OK)
+				return error;
+			
+			BString temporary = "(";
+			temporary.Append(columnPredicateString);
+			columnPredicateString = temporary;
+			
+			if (combinationOperator == B_AND)
+				columnPredicateString.Append("&&");
+			else
+				columnPredicateString.Append("||");
+		}
+		
+		BQuery searchFieldPredicateStringGenerator;
+		
+		status_t error;
+		if ((error = searchFieldPredicateStringGenerator.PushAttr(attributeName.String())) != B_OK)
+			return error;
+		
+		int32 value = atoi(searchFieldText.String());
+		if ((error = searchFieldPredicateStringGenerator.PushInt32(value)) != B_OK)
+			return error;
+		
+		query_op attributeOperator;
+		if ((error = searchField->GetAttributeOperator(&attributeOperator)) != B_OK)
+			return error;
+		if ((error = searchFieldPredicateStringGenerator.PushOp(attributeOperator)) != B_OK)
+			return error;
+		
+		BString searchFieldPredicateString;
+		if ((error = 
+				searchFieldPredicateStringGenerator.GetPredicate(&searchFieldPredicateString))
+			!= B_OK)
+			return error;
+		
+		columnPredicateString.Append(searchFieldPredicateString);
+		if (i != 0)
+			columnPredicateString.Append(")");
+	}
+	
+	*predicateString = columnPredicateString;
+	return B_OK;
+}
+
+
+TTemporalAttributeSearchColumn::TTemporalAttributeSearchColumn(BColumn* column,
+	BColumnTitle* columnTitle, TFindPanel* findPanel)
+	:
+	TAttributeSearchColumn(column, columnTitle, findPanel)
+{
+}
+
+
+TTemporalAttributeSearchColumn::~TTemporalAttributeSearchColumn()
+{
+}
+
+
+TAttributeSearchField*
+TTemporalAttributeSearchColumn::CreateAttributeSearchField()
+{
+	TTemporalAttributeSearchField* searchField = new TTemporalAttributeSearchField(this);
+	return searchField;
+}
+
+
+status_t
+TTemporalAttributeSearchColumn::GetPredicateString(BString* predicateString) const
+{
+	if (predicateString == NULL)
+		return B_BAD_VALUE;
+	
+	BString attributeName = fColumn->AttrName();
+	attributeName.ReplaceFirst("_stat/", "");
+	
+	BString columnPredicateString = "";
+	int32 numberOfSearchFields = fSearchFields.CountItems();
+	for (int32 i = 0; i < numberOfSearchFields; ++i) {
+		TAttributeSearchField* searchField = fSearchFields.ItemAt(i);
+		BString searchFieldText(searchField->TextControl()->Text());
+		if (searchFieldText == "")
+			continue;
+		
+		if (i != 0) {
+			status_t error;
+			query_op combinationOperator;
+			if ((error = searchField->GetCombinationOperator(&combinationOperator)) != B_OK)
+				return error;
+			
+			BString temporary = "(";
+			temporary.Append(columnPredicateString);
+			columnPredicateString = temporary;
+			
+			if (combinationOperator == B_AND)
+				columnPredicateString.Append("&&");
+			else
+				columnPredicateString.Append("||");
+		}
+		
+		BQuery searchFieldPredicateStringGenerator;
+		
+		status_t error;
+		if ((error = searchFieldPredicateStringGenerator.PushAttr(attributeName.String())) != B_OK)
+			return error;
+		
+		if ((error = searchFieldPredicateStringGenerator.PushDate(searchFieldText.String()))
+			!= B_OK) {
+			return error;
+		}
+		
+		query_op attributeOperator;
+		if ((error = searchField->GetAttributeOperator(&attributeOperator)) != B_OK)
+			return error;
+		if ((error = searchFieldPredicateStringGenerator.PushOp(attributeOperator)) != B_OK)
+			return error;
+		
+		BString searchFieldPredicateString;
+		if ((error = 
+				searchFieldPredicateStringGenerator.GetPredicate(&searchFieldPredicateString))
+			!= B_OK)
+			return error;
+		
+		columnPredicateString.Append(searchFieldPredicateString);
+		if (i != 0)
+			columnPredicateString.Append(")");
+	}
+	*predicateString = columnPredicateString;
+	return B_OK;
+}
+
+
+TStringAttributeSearchColumn::TStringAttributeSearchColumn(BColumn* column,
+	BColumnTitle* columnTitle, TFindPanel* findPanel)
+	:
+	TAttributeSearchColumn(column, columnTitle, findPanel)
+{
+}
+
+
+TStringAttributeSearchColumn::~TStringAttributeSearchColumn()
+{
+}
+
+
+TAttributeSearchField*
+TStringAttributeSearchColumn::CreateAttributeSearchField()
+{
+	TStringAttributeSearchField* searchField = new TStringAttributeSearchField(this);
+	return searchField;
+}
+
+
+status_t
+TStringAttributeSearchColumn::GetPredicateString(BString* predicateString) const
+{
+	if (predicateString == NULL)
+		return B_BAD_VALUE;
+	
+	BString attributeName = fColumn->AttrName();
+	attributeName.ReplaceFirst("_stat/", "");
+	
+	BString columnPredicateString = "";
+	int32 numberOfSearchFields = fSearchFields.CountItems();
+	for (int32 i = 0; i < numberOfSearchFields; ++i) {
+		TAttributeSearchField* searchField = fSearchFields.ItemAt(i);
+		BString searchFieldText(searchField->TextControl()->Text());
+		if (searchFieldText == "")
+			continue;
+		
+		if (i != 0 && columnPredicateString != "") {
+			status_t error;
+			query_op combinationOperator;
+			if ((error = searchField->GetCombinationOperator(&combinationOperator)) != B_OK)
+				return error;
+			
+			BString temporary = "(";
+			temporary.Append(columnPredicateString);
+			columnPredicateString = temporary;
+			
+			if (combinationOperator == B_AND)
+				columnPredicateString.Append("&&");
+			else
+				columnPredicateString.Append("||");
+		}
+		
+		BQuery searchFieldPredicateStringGenerator;
+		
+		status_t error;
+		if ((error = searchFieldPredicateStringGenerator.PushAttr(attributeName.String())) != B_OK)
+			return error;
+		
+		if ((error = searchFieldPredicateStringGenerator.PushString(searchFieldText.String(), true))
+			!= B_OK) {
+			return error;
+		}
+		
+		query_op attributeOperator;
+		if ((error = searchField->GetAttributeOperator(&attributeOperator)) != B_OK)
+			return error;
+		if ((error = searchFieldPredicateStringGenerator.PushOp(attributeOperator)) != B_OK)
+			return error;
+		
+		BString searchFieldPredicateString;
+		if ((error = 
+				searchFieldPredicateStringGenerator.GetPredicate(&searchFieldPredicateString))
+			!= B_OK)
+			return error;
+		
+		columnPredicateString.Append(searchFieldPredicateString);
+		if (i != 0)
+			columnPredicateString.Append(")");
+	}
+	*predicateString = columnPredicateString;
+	return B_OK;
+}
+
+
+TDisabledSearchColumn::TDisabledSearchColumn(BColumn* column, BColumnTitle* columnTitle,
+	TFindPanel* findPanel)
+	:
+	TAttributeColumn(column, columnTitle, findPanel)
 {
 	BBox* box = new BBox("container-box");
 	BGroupView* view = new BGroupView(B_VERTICAL, 0.0f);
@@ -493,16 +696,18 @@ TDisabledSearchColumn::TDisabledSearchColumn(BColumnTitle* title)
 		.AddGroup(B_HORIZONTAL)
 			.AddGlue()
 			.Add(new BStringView("label", B_TRANSLATE("Can't be queried!")))
-			.AddGlue();
+			.AddGlue()
+		.End()
+	.End();
 	box->AddChild(view);
 	BLayoutBuilder::Group<>(this, B_VERTICAL, B_USE_DEFAULT_SPACING)
-		.Add(box);
+		.Add(box)
+	.End();
 }
 
 
 TDisabledSearchColumn::~TDisabledSearchColumn()
 {
-	// Empty Destructor
 }
 
 }

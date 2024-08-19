@@ -35,6 +35,7 @@ All rights reserved.
 
 #include "QueryPoseView.h"
 
+#include <iostream>
 #include <new>
 
 #include <Catalog.h>
@@ -54,7 +55,7 @@ All rights reserved.
 #include "FSUtils.h"
 #include "MimeTypeList.h"
 #include "MimeTypes.h"
-#include "TFindPanel.h"
+#include "TFindPanelConstants.h"
 #include "Tracker.h"
 
 #include <fs_attr.h>
@@ -84,9 +85,7 @@ BQueryPoseView::BQueryPoseView(Model* model)
 	fRefFilter(NULL),
 	fQueryList(NULL),
 	fQueryListContainer(NULL),
-	fCreateOldPoseList(false),
-	fFindPanel(NULL),
-	fUpdateLocker(new BLocker())
+	fCreateOldPoseList(false)
 {
 }
 
@@ -95,6 +94,8 @@ BQueryPoseView::~BQueryPoseView()
 {
 	delete fQueryListContainer;
 }
+
+
 
 
 bool
@@ -136,24 +137,36 @@ QueryRefFilter::PassThroughDirectoryFilters(const entry_ref* ref) const
 }
 
 
+bool
+BQueryPoseView::AddColumn(BColumn* column, const BColumn* after)
+{
+	bool state = _inherited::AddColumn(column, after);
+	if (state) {
+		BMessage* message = new BMessage(kAddColumn);
+		message->AddPointer("pointer", column);
+		BMessenger(fFindPanel).SendMessage(message);
+	}
+	return state;
+}
+
+
+bool
+BQueryPoseView::RemoveColumn(BColumn* column, bool runAlert)
+{
+	bool status = _inherited::RemoveColumn(column, runAlert);
+	if (status) {
+		BMessage* message = new BMessage(kRemoveColumn);
+		if ((message->AddPointer("pointer", column)) == B_OK)
+			BMessenger(fFindPanel).SendMessage(message);
+	}
+	return status;
+}
+
+
 void
 BQueryPoseView::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
-		case kUpdatePoseView:
-		{
-			entry_ref ref;
-			message->FindRef("refs", &ref);
-			
-			delete fModel;
-			fModel = new Model(&ref);
-			
-			fAddPosesThreads.clear();
-			snooze(5000);
-			_inherited::Refresh();
-			break;
-		}
-
 		case kFSClipboardChanges:
 		{
 			// poses have always to be updated for the query view
@@ -161,10 +174,23 @@ BQueryPoseView::MessageReceived(BMessage* message)
 			break;
 		}
 
-		case '1234':
+		case kPauseSearchResults:
 		{
 			fAddPosesThreads.clear();
 			HideBarberPole();
+			break;
+		}
+
+		case kRefreshQueryResults:
+		{
+			entry_ref ref;
+			if (message->FindRef("refs", &ref) != B_OK)
+				break;
+			
+			delete fModel;
+			fModel = new Model(&ref);
+			fAddPosesThreads.clear();
+			_inherited::Refresh();
 			break;
 		}
 
@@ -272,50 +298,14 @@ BQueryPoseView::AddPosesCompleted()
 
 	_inherited::AddPosesCompleted();
 	
-	BMessenger(FindPanel()).SendMessage(new BMessage('2345'));
+	BMessenger(fFindPanel).SendMessage(kResetPauseButton);
 }
 
 
-status_t
-BQueryPoseView::SetFindPanel(TFindPanel* panel)
+BTitleView*
+BQueryPoseView::CreateTitleView()
 {
-	if (panel == NULL)
-		return B_BAD_VALUE;
-	
-	fFindPanel = panel;
-	return B_OK;
-}
-
-
-bool
-BQueryPoseView::RemoveColumn(BColumn* column, bool runAlert)
-{
-	bool status = _inherited::RemoveColumn(column, runAlert);
-
-	if (status && FindPanel() != NULL) {
-		BMessage* message = new BMessage(kRemoveColumn);
-		message->AddPointer("pointer", column);
-		BMessenger(FindPanel()).SendMessage(message);
-	}
-	
-	return status;
-}
-
-
-bool
-BQueryPoseView::AddColumn(BColumn* newColumn, const BColumn* after)
-{
-	if (newColumn == NULL)
-		return false;
-
-	bool status = _inherited::AddColumn(newColumn, after);
-	if (status && fFindPanel != NULL) {
-		BMessage* message = new BMessage(kAddColumn);
-		message->AddPointer("pointer", newColumn);
-		BMessenger(FindPanel()).SendMessage(message);
-	}
-	
-	return status;
+	return dynamic_cast<BTitleView*>(new BQueryTitleView(this));
 }
 
 
@@ -581,7 +571,7 @@ QueryRefFilter::Filter(const entry_ref* ref, BNode* node, stat_beos* st,
 {
 	TTracker* tracker = dynamic_cast<TTracker*>(be_app);
 	return !(!fShowResultsFromTrash && tracker != NULL && tracker->InTrashNode(ref))
-		&& PassThroughFilters(ref);
+		&& PassThroughDirectoryFilters(ref);
 }
 
 

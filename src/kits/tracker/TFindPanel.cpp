@@ -1,114 +1,45 @@
 #include "TFindPanel.h"
 
 
-#include <utility>
 #include <iostream>
+#include <string>
 
 #include <fs_attr.h>
 
-#include <AutoLock.h>
-#include <Box.h>
 #include <Button.h>
-#include <Catalog.h>
 #include <ControlLook.h>
+#include <Debug.h>
 #include <FindDirectory.h>
-#include <GroupView.h>
 #include <LayoutBuilder.h>
-#include <Locale.h>
-#include <Locker.h>
-#include <Menu.h>
 #include <MenuField.h>
-#include <MenuItem.h>
 #include <Message.h>
-#include <MessageRunner.h>
-#include <OS.h>
+#include <Messenger.h>
 #include <PopUpMenu.h>
 #include <SeparatorView.h>
 #include <Volume.h>
 #include <VolumeRoster.h>
 
 #include "Attributes.h"
+#include "Catalog.h"
 #include "Commands.h"
 #include "IconMenuItem.h"
-#include "MimeTypeList.h"
 #include "MimeTypes.h"
+#include "MimeTypeList.h"
+#include "Model.h"
 #include "QueryContainerWindow.h"
 #include "QueryPoseView.h"
 #include "TAttributeColumn.h"
-#include "TAttributeSearchField.h"
+#include "TFindPanelConstants.h"
 #include "Tracker.h"
-#include "ViewState.h"
+#include "Utilities.h"
 
 #undef B_TRANSLATION_CONTEXT
-#define B_TRANSLATION_CONTEXT "FindPanel"
+#define B_TRANSLATION_CONTEXT "Find Panel"
 
 
 namespace BPrivate {
 
-
 static const char* kAllMimeTypes = "mimes/ALLTYPES";
-
-
-static const char* combinationOperators[] = {
-	B_TRANSLATE_MARK("and"),
-	B_TRANSLATE_MARK("or"),
-};
-
-static const int32 combinationOperatorsLength = sizeof(combinationOperators) / sizeof(
-	combinationOperators[0]);
-
-static const query_op combinationQueryOps[] = {
-	B_AND,
-	B_OR
-};
-
-static const char* regularAttributeOperators[] = {
-	B_TRANSLATE_MARK("contains"),
-	B_TRANSLATE_MARK("is"),
-	B_TRANSLATE_MARK("is not"),
-	B_TRANSLATE_MARK("starts with"),
-	B_TRANSLATE_MARK("ends with")
-};
-
-static const query_op regularQueryOps[] = {
-	B_CONTAINS,
-	B_EQ,
-	B_NE,
-	B_BEGINS_WITH,
-	B_ENDS_WITH
-};
-
-static const int32 regularAttributeOperatorsLength = sizeof(regularAttributeOperators) / 
-	sizeof(regularAttributeOperators[0]);
-
-static const char* sizeAttributeOperators[] = {
-	B_TRANSLATE_MARK("greater than"),
-	B_TRANSLATE_MARK("less than"),
-	B_TRANSLATE_MARK("is")
-};
-
-static const query_op sizeQueryOps[] = {
-	B_GT,
-	B_LT,
-	B_EQ
-};
-
-static const int32 sizeAttributeOperatorsLength = sizeof(sizeAttributeOperators) / sizeof(
-	sizeAttributeOperators[0]);
-
-static const char* modifiedAttributeOperators[] = {
-	B_TRANSLATE_MARK("before"),
-	B_TRANSLATE_MARK("after")
-};
-
-static const query_op modifiedQueryOps[] = {
-	B_LT,
-	B_GT
-};
-
-static const int32 modifiedAttributeOperatorsLength = sizeof(modifiedAttributeOperators) /
-	sizeof(modifiedAttributeOperators[0]);
-
 
 class TMostUsedNames {
 public:
@@ -142,119 +73,223 @@ protected:
 TMostUsedNames gTMostUsedMimeTypes("MostUsedMimeTypes", "Tracker");
 
 
-BEntry
-GetEntryFromEntryRef(const entry_ref* ref)
+TFindPanel::TFindPanel(BQueryContainerWindow* window, BQueryPoseView* poseView)
+	:
+	BView("incremental-find-panel", B_WILL_DRAW),
+	fButton(new BButton(B_TRANSLATE("Pause"), new BMessage(kPauseOrSearch))),
+	fColumnsContainer(new BView("columns-container", B_WILL_DRAW)),
+	fQueryContainerWindow(window),
+	fQueryPoseView(poseView)
 {
-	if (ref == NULL) {
-		return BEntry();
-	} else {
-		BEntry entry(ref);
-		if (entry.InitCheck() != B_OK)
-			return BEntry();
-		else
-			return entry;
+	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	SetLowUIColor(ViewUIColor());
+	
+	status_t error;
+	if ((error = SetTemporaryFileHandle()) != B_OK)
+		std::cout<<strerror(error)<<std::endl;
+	BuildMimeTypeMenu();
+	BuildVolumeMenu();
+	BuildFindPanelLayout();
+	ResizeMenuFields();
+}
+
+
+status_t
+CreateTemporaryDirectory(BPath* parentDirectoryPath)
+{
+	if (parentDirectoryPath == NULL)
+		return B_BAD_VALUE;
+
+	BDirectory parentDirectory(parentDirectoryPath->Path());
+	status_t error = parentDirectory.InitCheck();
+	if (error != B_OK)
+		return error;
+	
+	error = parentDirectory.CreateDirectory("temporary", NULL);
+	return error;
+}
+
+
+status_t
+GetTemporaryFilePath(BPath* filePath)
+{
+	if (filePath == NULL)
+		return B_BAD_VALUE;
+	
+	status_t error;
+	
+	BPath homeDirectoryPath;
+	if (find_directory(B_USER_DIRECTORY, &homeDirectoryPath) != B_OK)
+		homeDirectoryPath.SetTo("/boot/home");
+	
+	BPath queriesDirectoryPath = homeDirectoryPath;
+	queriesDirectoryPath.Append("queries");
+	if ((error = queriesDirectoryPath.InitCheck()) != B_OK)
+		return error;
+	
+	BPath temporaryQueriesDirectoryPath = queriesDirectoryPath;
+	temporaryQueriesDirectoryPath.Append("temporary");
+	if (BEntry(temporaryQueriesDirectoryPath.Path()).Exists() == false) {
+		error = CreateTemporaryDirectory(&queriesDirectoryPath);
 	}
+
+	if (error != B_OK)
+		return error;
+	
+	BDirectory temporaryQueriesDirectory(temporaryQueriesDirectoryPath.Path());
+	if ((error = temporaryQueriesDirectory.InitCheck()) != B_OK)
+		return error;
+
+	int32 numberOfFiles = temporaryQueriesDirectory.CountEntries();
+
+	BString temporaryFileName = "temporary";
+	temporaryFileName.Append(std::to_string(numberOfFiles).c_str());
+
+	BPath temporaryFilePath = temporaryQueriesDirectoryPath;
+	if ((error = temporaryFilePath.InitCheck()) != B_OK)
+		return error;
+	
+	temporaryFilePath.Append(temporaryFileName.String());
+	*filePath = temporaryFilePath;
+	return B_OK;
+}
+
+
+status_t
+TFindPanel::SetTemporaryFileHandle()
+{
+	BPath temporaryFilePath;
+	status_t error;
+	
+	if ((error = GetTemporaryFilePath(&temporaryFilePath)) != B_OK)
+		return error;
+	
+	fFileEntry = new BEntry(temporaryFilePath.Path());
+	if ((error = fFileEntry->InitCheck()) != B_OK) {
+		return error;
+	}
+	fFile = new BFile(temporaryFilePath.Path(), B_CREATE_FILE | B_READ_WRITE);
+	if ((error = fFile->InitCheck()) != B_OK)
+		return error;
+	
+	if ((error = BNodeInfo(fFile).SetType(B_QUERY_MIMETYPE)) != B_OK)
+		return error;
+	
+	return B_OK;
 }
 
 
 void
-TryReadingFileFromEntry(BFile* file, const BEntry* entry)
+TFindPanel::BuildMimeTypeMenu()
 {
-	if (entry == NULL || entry->InitCheck() != B_OK)
-		return;
-	
-	file = new BFile(entry, B_READ_WRITE | B_CREATE_FILE);
-}
-
-
-BPath
-CreateTemporaryFile()
-{
-	BPath userHomeDirectoryPath;
-	if (find_directory(B_USER_DIRECTORY, &userHomeDirectoryPath) != B_OK)
-		userHomeDirectoryPath.SetTo("/boot/home");
-	
-	BPath temporaryQueriesDirectoryPath = userHomeDirectoryPath;
-	temporaryQueriesDirectoryPath.Append("queries/temporary");
-	if (BEntry(temporaryQueriesDirectoryPath.Path()).Exists() == false) {
-		BPath queriesDirectoryPath;
-		temporaryQueriesDirectoryPath.GetParent(&queriesDirectoryPath);
-		BDirectory(temporaryQueriesDirectoryPath.Path()).CreateDirectory("temporary", NULL);
-	}
-	
-	BDirectory temporaryQueriesDirectory(temporaryQueriesDirectoryPath.Path());
-	int32 countOfFiles = temporaryQueriesDirectory.CountEntries();
-	
-	BString temporaryFileName = "temporary";
-	temporaryFileName.Append(std::to_string(countOfFiles).c_str());
-	
-	BPath temporaryFilePath = temporaryQueriesDirectoryPath;
-	temporaryFilePath.Append(temporaryFileName);
-	
-	return temporaryFilePath;
-}
-
-
-TFindPanel::TFindPanel(BQueryContainerWindow* window, BQueryPoseView* poseView, BLooper* looper,
-	entry_ref* ref)
-	:
-	BView("find-panel", B_WILL_DRAW),
-	fContainerWindow(window),
-	fPoseView(poseView),
-	fLooper(looper),
-	fEntry(NULL),
-	fFile(NULL)
-{
-	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-	SetLowUIColor(ViewUIColor());
-
-	if (ref == NULL) {
-		BPath temporaryFilePath = CreateTemporaryFile();
-		fFile = new BFile(temporaryFilePath.Path(), B_READ_WRITE | B_CREATE_FILE);
-		if (fFile->InitCheck() != B_OK)
-			debugger("");
-		fEntry = new BEntry(temporaryFilePath.Path());
-		BNodeInfo(fFile).SetType(B_QUERY_MIMETYPE);
-	}
-
-	// Building the mime-type menu
 	fMimeTypeMenu = new BPopUpMenu("MimeTypeMenu");
 	fMimeTypeMenu->SetRadioMode(true);
 	AddMimeTypesToMenu(fMimeTypeMenu);
 	fMimeTypeField = new BMenuField("MimeTypeMenu", "", fMimeTypeMenu);
 	fMimeTypeField->SetDivider(0.0f);
 	fMimeTypeField->MenuItem()->SetLabel(B_TRANSLATE("All files and folders"));
+}
 
-	// Building the volume/directory selection Menu
+
+static void
+PopUpMenuSetTitle(BMenu* menu, const char* title)
+{
+	// This should really be in BMenuField
+	BMenu* bar = menu->Supermenu();
+	
+	ASSERT(bar);
+	ASSERT(bar->ItemAt(0));
+	if (bar == NULL || !bar->ItemAt(0))
+		return;
+	
+	bar->ItemAt(0)->SetLabel(title);
+}
+
+
+void
+TFindPanel::AddVolumes(BMenu* menu)
+{
+	// ToDo: add calls to this to rebuild the menu when a volume gets mounted
+
+	BMessage* message = new BMessage(kTVolumeItem);
+	message->AddInt32("device", -1);
+	menu->AddItem(new BMenuItem(B_TRANSLATE("All disks"), message));
+	menu->AddSeparatorItem();
+	PopUpMenuSetTitle(menu, B_TRANSLATE("All disks"));
+
+	BVolumeRoster roster;
+	BVolume volume;
+	roster.Rewind();
+	while (roster.GetNextVolume(&volume) == B_OK) {
+		if (volume.IsPersistent() && volume.KnowsQuery()) {
+			BDirectory root;
+			if (volume.GetRootDirectory(&root) != B_OK)
+				continue;
+
+			BEntry entry;
+			root.GetEntry(&entry);
+
+			Model model(&entry, true);
+			if (model.InitCheck() != B_OK)
+				continue;
+
+			message = new BMessage(kTVolumeItem);
+			message->AddInt32("device", volume.Device());
+			
+			menu->AddItem(new ModelMenuItem(&model, model.Name(), message));
+		}
+	}
+
+	if (menu->ItemAt(0))
+		menu->ItemAt(0)->SetMarked(true);
+}
+
+
+void
+TFindPanel::BuildVolumeMenu()
+{
 	fVolMenu = new BPopUpMenu("VolumeMenu", false, false);
-	BMenuField* volumeField = new BMenuField("", B_TRANSLATE("In"), fVolMenu);
-	volumeField->SetDivider(volumeField->StringWidth(volumeField->Label())+8);
+	fVolumeField = new BMenuField("", B_TRANSLATE("In"), fVolMenu);
+	fVolumeField->SetDivider(fVolumeField->StringWidth(fVolumeField->Label()) + 8);
 	AddVolumes(fVolMenu);
-	
-	fColumnsContainer = new BView("columns-container", B_WILL_DRAW);
-	
+}
+
+
+void
+TFindPanel::BuildFindPanelLayout()
+{
 	BLayoutBuilder::Group<>(this, B_VERTICAL, B_USE_DEFAULT_SPACING)
 		.SetInsets(0, B_USE_WINDOW_SPACING, 0, 0)
 		.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING)
 			.AddGlue()
 			.Add(fMimeTypeField)
-			.Add(volumeField)
-			.Add((fPauseButton = new BButton("Pause", new BMessage('1234'))))
+			.Add(fVolumeField)
+			.Add(fButton)
 			.AddGlue()
 		.End()
 		.Add(new BSeparatorView())
 		.Add(fColumnsContainer)
 	.End();
-	
+}
+
+
+void
+TFindPanel::ResizeMenuFields()
+{
 	TFindPanel::ResizeMenuField(fMimeTypeField);
-	TFindPanel::ResizeMenuField(volumeField);
+	TFindPanel::ResizeMenuField(fVolumeField);
 }
 
 
 TFindPanel::~TFindPanel()
 {
-	fEntry->Remove();
-	delete fEntry;
+	if (fFileEntry != NULL)
+		fFileEntry->Remove();
+	
+	fFileEntry->Unset();
+	delete fFileEntry;
+	
+	fFile->Unset();
 	delete fFile;
 }
 
@@ -266,19 +301,18 @@ TFindPanel::AttachedToWindow()
 	fVolMenu->SetTargetForItems(this);
 	
 	int32 count = fMimeTypeMenu->CountItems();
-	for (int32 i = 0; i < count; i++) {
+	for (int32 i = 0; i < count; ++i) {
 		BMenuItem* item = fMimeTypeMenu->ItemAt(i);
 		BMenu* subMenu = item->Submenu();
-		if (subMenu == NULL) {
+		if (subMenu == NULL)
 			item->SetTarget(target);
-			continue;
-		}
-		
-		subMenu->SetTargetForItems(target);
+		else
+			subMenu->SetTargetForItems(target);
 	}
 	
-	fPauseButton->SetTarget(target);
+	fButton->SetTarget(target);
 }
+
 
 void
 TFindPanel::ResizeMenuField(BMenuField* menuField)
@@ -324,24 +358,11 @@ TFindPanel::ResizeMenuField(BMenuField* menuField)
 		}
 	}
 
+	width = std::max(width, menuField->StringWidth(B_TRANSLATE("Multiple selections")));
+
 	float maxWidth = be_control_look->DefaultItemSpacing() * 20;
 	size.width = std::min(width + padding, maxWidth);
 	menuField->SetExplicitSize(size);
-}
-
-
-static void
-PopUpMenuSetTitle(BMenu* menu, const char* title)
-{
-	// This should really be in BMenuField
-	BMenu* bar = menu->Supermenu();
-
-	ASSERT(bar);
-	ASSERT(bar->ItemAt(0));
-	if (bar == NULL || !bar->ItemAt(0))
-		return;
-
-	bar->ItemAt(0)->SetLabel(title);
 }
 
 
@@ -392,38 +413,6 @@ TFindPanel::SetCurrentMimeType(BMenuItem* item)
 }
 
 
-BMenuItem*
-TFindPanel::CurrentMimeType(const char** type) const
-{
-	// search for marked item in the list
-	BMenuItem* item = MimeTypeMenu()->FindMarked();
-
-	if (item != NULL && MimeTypeMenu()->IndexOf(item) != 0
-		&& item->Submenu() == NULL) {
-		// if it's one of the most used items, ignore it
-		item = NULL;
-	}
-
-	if (item == NULL) {
-		for (int32 index = MimeTypeMenu()->CountItems(); index-- > 0;) {
-			BMenu* submenu = MimeTypeMenu()->ItemAt(index)->Submenu();
-			if (submenu != NULL && (item = submenu->FindMarked()) != NULL)
-				break;
-		}
-	}
-
-	if (type != NULL && item != NULL) {
-		BMessage* message = item->Message();
-		if (message == NULL)
-			return NULL;
-
-		if (message->FindString("mimetype", type) != B_OK)
-			return NULL;
-	}
-	return item;
-}
-
-
 status_t
 TFindPanel::SetCurrentMimeType(const char* label)
 {
@@ -466,127 +455,45 @@ TFindPanel::SetCurrentMimeType(const char* label)
 }
 
 
-void
-TFindPanel::AddMimeTypesToMenu(BPopUpMenu* menu)
+BMenuItem*
+TFindPanel::CurrentMimeType(const char** type) const
 {
-	BMessenger target(this);
+	// search for marked item in the list
+	BMenuItem* item = MimeTypeMenu()->FindMarked();
 
-	const char* kAllMimeTypes = "mime/ALLTYPES";
-
-	BMessage* itemMessage = new BMessage(kMIMETypeItem);
-	itemMessage->AddString("mimetype", kAllMimeTypes);
-
-	IconMenuItem* firstItem = new IconMenuItem(
-		B_TRANSLATE("All files and folders"), itemMessage,
-		static_cast<BBitmap*>(NULL));
-	fMimeTypeMenu->AddItem(firstItem);
-	fMimeTypeMenu->AddSeparatorItem();
-
-	// add recent MIME types
-
-	TTracker* tracker = dynamic_cast<TTracker*>(be_app);
-	ASSERT(tracker != NULL);
-
-	BList list;
-	if (tracker != NULL && gTMostUsedMimeTypes.ObtainList(&list)) {
-		int32 count = 0;
-		for (int32 index = 0; index < list.CountItems(); index++) {
-			const char* name = (const char*)list.ItemAt(index);
-
-			MimeTypeList* mimeTypes = tracker->MimeTypes();
-			if (mimeTypes != NULL) {
-				const ShortMimeInfo* info = mimeTypes->FindMimeType(name);
-				if (info == NULL)
-					continue;
-
-				BMessage* message = new BMessage(kMIMETypeItem);
-				message->AddString("mimetype", info->InternalName());
-
-				fMimeTypeMenu->AddItem(new BMenuItem(name, message));
-				count++;
-			}
-		}
-		if (count != 0)
-			fMimeTypeMenu->AddSeparatorItem();
-
-		gTMostUsedMimeTypes.ReleaseList();
+	if (item != NULL && MimeTypeMenu()->IndexOf(item) != 0
+		&& item->Submenu() == NULL) {
+		// if it's one of the most used items, ignore it
+		item = NULL;
 	}
 
-	// add MIME type tree list
-
-	BMessage types;
-	if (BMimeType::GetInstalledSupertypes(&types) == B_OK) {
-		const char* superType;
-		int32 index = 0;
-
-		while (types.FindString("super_types", index++, &superType) == B_OK) {
-			BMenu* superMenu = new BMenu(superType);
-
-			BMessage* message = new BMessage(kMIMETypeItem);
-			message->AddString("mimetype", superType);
-
-			fMimeTypeMenu->AddItem(new IconMenuItem(superMenu, message,
-				superType));
-
-			// the MimeTypeMenu's font is not correct at this time
-			superMenu->SetFont(be_plain_font);
+	if (item == NULL) {
+		for (int32 index = MimeTypeMenu()->CountItems(); index-- > 0;) {
+			BMenu* submenu = MimeTypeMenu()->ItemAt(index)->Submenu();
+			if (submenu != NULL && (item = submenu->FindMarked()) != NULL)
+				break;
 		}
 	}
 
-	if (tracker != NULL) {
-		tracker->MimeTypes()->EachCommonType(
-			&TFindPanel::AddOneMimeTypeToMenu, fMimeTypeMenu);
+	if (type != NULL && item != NULL) {
+		BMessage* message = item->Message();
+		if (message == NULL)
+			return NULL;
+
+		if (message->FindString("mimetype", type) != B_OK)
+			return NULL;
 	}
-
-	// remove empty super type menus (and set target)
-
-	for (int32 index = fMimeTypeMenu->CountItems(); index-- > 2;) {
-		BMenuItem* item = fMimeTypeMenu->ItemAt(index);
-		BMenu* submenu = item->Submenu();
-		if (submenu == NULL) {
-			item->SetTarget(target);
-			continue;
-		}
-
-		if (submenu->CountItems() == 0) {
-			fMimeTypeMenu->RemoveItem(item);
-			delete item;
-		} else
-			submenu->SetTargetForItems(BMessenger(this));
-	}
+	return item;
 }
 
 
-static void
-AddSubtype(BString& text, const BMimeType& type)
+static
+void AddSubtype(BString& text, const BMimeType& type)
 {
 	text.Append(" (");
 	text.Append(strchr(type.Type(), '/') + 1);
 		// omit the slash
 	text.Append(")");
-}
-
-
-void
-TFindPanel::PushMimeType(BQuery* query) const
-{
-	const char* type;
-	if (CurrentMimeType(&type) == NULL)
-		return;
-
-	if (strcmp(kAllMimeTypes, type)) {
-		// add an asterisk if we are searching for a supertype
-		char buffer[B_FILE_NAME_LENGTH];
-		if (strchr(type, '/') == NULL) {
-			strlcpy(buffer, type, sizeof(buffer));
-			strlcat(buffer, "/*", sizeof(buffer));
-			type = buffer;
-		}
-
-		query->PushAttr(kAttrMIMEType);
-		query->PushString(type);
-		query->PushOp(B_EQ);
-	}
 }
 
 
@@ -630,41 +537,524 @@ TFindPanel::AddOneMimeTypeToMenu(const ShortMimeInfo* info, void* castToMenu)
 
 
 void
-TFindPanel::AddVolumes(BMenu* menu)
+TFindPanel::AddMimeTypesToMenu(BPopUpMenu* menu)
 {
-	// ToDo: add calls to this to rebuild the menu when a volume gets mounted
+	BMessage* itemMessage = new BMessage(kMIMETypeItem);
+	itemMessage->AddString("mimetype", kAllMimeTypes);
 
-	BMessage* message = new BMessage(kTVolumeItem);
-	message->AddInt32("device", -1);
-	menu->AddItem(new BMenuItem(B_TRANSLATE("All disks"), message));
-	menu->AddSeparatorItem();
-	PopUpMenuSetTitle(menu, B_TRANSLATE("All disks"));
+	IconMenuItem* firstItem = new IconMenuItem(
+		B_TRANSLATE("All files and folders"), itemMessage,
+		static_cast<BBitmap*>(NULL));
+	MimeTypeMenu()->AddItem(firstItem);
+	MimeTypeMenu()->AddSeparatorItem();
 
-	BVolumeRoster roster;
-	BVolume volume;
-	roster.Rewind();
-	while (roster.GetNextVolume(&volume) == B_OK) {
-		if (volume.IsPersistent() && volume.KnowsQuery()) {
-			BDirectory root;
-			if (volume.GetRootDirectory(&root) != B_OK)
-				continue;
+	// add recent MIME types
 
-			BEntry entry;
-			root.GetEntry(&entry);
+	TTracker* tracker = dynamic_cast<TTracker*>(be_app);
+	ASSERT(tracker != NULL);
 
-			Model model(&entry, true);
-			if (model.InitCheck() != B_OK)
-				continue;
+	BList list;
+	if (tracker != NULL && gTMostUsedMimeTypes.ObtainList(&list)) {
+		int32 count = 0;
+		for (int32 index = 0; index < list.CountItems(); index++) {
+			const char* name = (const char*)list.ItemAt(index);
 
-			message = new BMessage(kTVolumeItem);
-			message->AddInt32("device", volume.Device());
-			
-			menu->AddItem(new ModelMenuItem(&model, model.Name(), message));
+			MimeTypeList* mimeTypes = tracker->MimeTypes();
+			if (mimeTypes != NULL) {
+				const ShortMimeInfo* info = mimeTypes->FindMimeType(name);
+				if (info == NULL)
+					continue;
+
+				BMessage* message = new BMessage(kMIMETypeItem);
+				message->AddString("mimetype", info->InternalName());
+
+				MimeTypeMenu()->AddItem(new BMenuItem(name, message));
+				count++;
+			}
+		}
+		if (count != 0)
+			MimeTypeMenu()->AddSeparatorItem();
+
+		gTMostUsedMimeTypes.ReleaseList();
+	}
+
+	// add MIME type tree list
+
+	BMessage types;
+	if (BMimeType::GetInstalledSupertypes(&types) == B_OK) {
+		const char* superType;
+		int32 index = 0;
+
+		while (types.FindString("super_types", index++, &superType) == B_OK) {
+			BMenu* superMenu = new BMenu(superType);
+
+			BMessage* message = new BMessage(kMIMETypeItem);
+			message->AddString("mimetype", superType);
+
+			MimeTypeMenu()->AddItem(new IconMenuItem(superMenu, message,
+				superType));
+
+			// the MimeTypeMenu's font is not correct at this time
+			superMenu->SetFont(be_plain_font);
 		}
 	}
 
-	if (menu->ItemAt(0))
-		menu->ItemAt(0)->SetMarked(true);
+	if (tracker != NULL) {
+		tracker->MimeTypes()->EachCommonType(
+			&TFindPanel::AddOneMimeTypeToMenu, MimeTypeMenu());
+	}
+
+	// remove empty super type menus (and set target)
+
+	for (int32 index = MimeTypeMenu()->CountItems(); index-- > 2;) {
+		BMenuItem* item = MimeTypeMenu()->ItemAt(index);
+		BMenu* submenu = item->Submenu();
+		if (submenu == NULL)
+			continue;
+
+		if (submenu->CountItems() == 0) {
+			MimeTypeMenu()->RemoveItem(item);
+			delete item;
+		} else
+			submenu->SetTargetForItems(this);
+	}
+}
+
+
+void
+TFindPanel::PushMimeType(BQuery* query) const
+{
+	const char* type;
+	if (CurrentMimeType(&type) == NULL)
+		return;
+
+
+	if (strcmp(kAllMimeTypes, type)) {
+		// add an asterisk if we are searching for a supertype
+		char buffer[B_FILE_NAME_LENGTH];
+		if (strchr(type, '/') == NULL) {
+			strlcpy(buffer, type, sizeof(buffer));
+			strlcat(buffer, "/*", sizeof(buffer));
+			type = buffer;
+		}
+
+		query->PushAttr(kAttrMIMEType);
+		query->PushString(type);
+		query->PushOp(B_EQ);
+	}
+}
+
+
+status_t
+TFindPanel::GetMaximumHeightOfColumns(float* height) const
+{
+	if (height == NULL)
+		return B_BAD_VALUE;
+	
+	float heightOfColumns = 0.0f;
+	int32 numberOfColumns = fColumnsContainer->CountChildren();
+	for (int32 i = 0; i < numberOfColumns; ++i) {
+		TAttributeSearchColumn* searchColumn = dynamic_cast<TAttributeSearchColumn*>(
+			fColumnsContainer->ChildAt(i));
+		
+		if (searchColumn == NULL)
+			continue;
+		
+		BSize size;
+		status_t error;
+		if ((error = searchColumn->GetRequiredSize(&size)) != B_OK)
+			return error;
+		
+		if (size.height > heightOfColumns)
+			heightOfColumns = size.height;
+	}
+	
+	*height = heightOfColumns;
+	return B_OK;
+}
+
+
+status_t
+TFindPanel::GetRequiredWidthOfColumnsContainer(float* width) const
+{
+	if (width == NULL)
+		return B_BAD_VALUE;
+	
+	int32 count = fColumnsContainer->CountChildren();
+	TAttributeColumn* lastColumn = dynamic_cast<TAttributeColumn*>(
+		fColumnsContainer->ChildAt(count-1));
+	
+	BRect boundingRectangle = lastColumn->Frame();
+	*width = boundingRectangle.right;
+	return B_OK;
+}
+
+
+status_t
+TFindPanel::HandleResizingColumnsContainer()
+{
+	float heightOfColumnsContainer;
+	status_t error = GetMaximumHeightOfColumns(&heightOfColumnsContainer);
+	if (error != B_OK)
+		return error;
+	
+	float widthOfColumnsContainer;
+	if ((error = GetRequiredWidthOfColumnsContainer(&widthOfColumnsContainer)) != B_OK)
+		return error;
+	widthOfColumnsContainer += be_control_look->DefaultItemSpacing();
+	
+	BSize finalContainerSize(widthOfColumnsContainer, heightOfColumnsContainer);
+	finalContainerSize.height += be_control_look->DefaultItemSpacing();
+	fColumnsContainer->SetExplicitMinSize(finalContainerSize);
+	fColumnsContainer->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, finalContainerSize.Height()));
+	fColumnsContainer->SetExplicitPreferredSize(finalContainerSize);
+	fColumnsContainer->ResizeTo(finalContainerSize);
+	
+	int32 numberOfColumns = fColumnsContainer->CountChildren();
+	for (int32 i = 0; i < numberOfColumns; ++i) {
+		TAttributeColumn* column = dynamic_cast<TAttributeColumn*>(
+			fColumnsContainer->ChildAt(i));
+		if (column == NULL)
+			continue;
+		
+		BMessage* message = new BMessage(kResizeHeight);
+		message->AddFloat("height", heightOfColumnsContainer);
+		BMessenger(column).SendMessage(message);
+	}
+	return B_OK;
+}
+
+
+status_t
+SendMessageToColumn(TAttributeColumn* column, uint32 messageConstant)
+{
+	BMessage* message = new BMessage(messageConstant);
+	return BMessenger(column).SendMessage(message);
+}
+
+
+status_t
+TFindPanel::HandleMovingAColumn()
+{
+	int32 numberOfColumns = fColumnsContainer->CountChildren();
+	for (int32 i = 0; i < numberOfColumns; ++i) {
+		TAttributeColumn* column = dynamic_cast<TAttributeColumn*>(
+			fColumnsContainer->ChildAt(i));
+		if (column == NULL)
+			continue;
+		
+		SendMessageToColumn(column, kMoveColumn);
+	}
+	
+	return B_OK;
+}
+
+
+status_t
+TFindPanel::HandleResizingColumns()
+{
+	int32 numberOfColumns = fColumnsContainer->CountChildren();
+	for (int32 i = 0; i < numberOfColumns; ++i) {
+		TAttributeColumn* column = dynamic_cast<TAttributeColumn*>(
+			fColumnsContainer->ChildAt(i));
+		
+		if (column == NULL)
+			continue;
+		
+		SendMessageToColumn(column, kResizeColumn);
+	}
+	
+	return B_OK;
+}
+
+
+bool
+ShouldSearchColumnBeAdded(BString label)
+{
+	const BString disabledColumnLabels[] = {
+		BString("Real name"),
+		BString("Created"),
+		BString("Kind"),
+		BString("Location"),
+		BString("Permissions")
+	};
+	
+	const int32 numberOfDisabledLabels = 
+		sizeof(disabledColumnLabels)/sizeof(disabledColumnLabels[0]);
+	
+	for (int32 i = 0; i < numberOfDisabledLabels; ++i) {
+		if (label == disabledColumnLabels[i])
+			return false;
+	}
+	
+	return true;
+}
+
+
+AttributeType
+GetAttributeTypeFromInt(int32 type)
+{
+	if (type == B_OFF_T_TYPE || type == B_INT32_TYPE)
+		return AttributeType::NUMERIC;
+	else if (type == B_TIME_TYPE)
+		return AttributeType::TEMPORAL;
+	else
+		return AttributeType::STRING;
+}
+
+
+status_t
+TFindPanel::AddAttributeColumn(BColumn* column)
+{
+	if (column == NULL)
+		return B_BAD_VALUE;
+	
+	BColumnTitle* titleView = fQueryPoseView->TitleView()->FindColumnTitle(column);
+	if (titleView == NULL)
+		return B_BAD_VALUE;
+	
+	if (ShouldSearchColumnBeAdded(column->Title())) {
+		AttributeType type = GetAttributeTypeFromInt(column->AttrType());
+		TAttributeSearchColumn* searchColumn = 
+			TAttributeSearchColumn::CreateSearchColumnForAttributeType(type, column, titleView,
+				this);
+		fColumnsContainer->AddChild(searchColumn);
+		return BMessenger(searchColumn).SendMessage(new BMessage(kAddSearchField));
+	} else {
+		TDisabledSearchColumn* disabledColumn = new TDisabledSearchColumn(column, titleView, this);
+		fColumnsContainer->AddChild(disabledColumn);
+		return B_OK;
+	}
+}
+
+
+status_t
+TFindPanel::RemoveAttributeColumn(BColumn* column)
+{
+	int32 columnsCount = fColumnsContainer->CountChildren();
+	for (int32 i = 0; i < columnsCount; ++i) {
+		TAttributeColumn* attributeColumn = dynamic_cast<TAttributeColumn*>(
+			fColumnsContainer->ChildAt(i));
+		BColumn* comparisonColumn = NULL;
+		status_t error;
+		if ((error = attributeColumn->GetColumn(&comparisonColumn)) != B_OK)
+			return error;
+		if (comparisonColumn == column) {
+			attributeColumn->RemoveSelf();
+			delete attributeColumn;
+			break;
+		}
+	}
+	HandleMovingAColumn();
+	return B_OK;
+}
+
+
+status_t
+TFindPanel::GetPredicateString(BString* predicateString) const
+{
+	if (predicateString == NULL)
+		return B_BAD_VALUE;
+	
+	int32 numberOfColumns = fColumnsContainer->CountChildren();
+	bool combinatorShouldBeAdded = false;
+	
+	BString predicateStringSetter = "";
+	for (int32 i = 0; i < numberOfColumns; ++i) {
+		TAttributeSearchColumn* searchColumn = dynamic_cast<TAttributeSearchColumn*>(
+			fColumnsContainer->ChildAt(i));
+		if (searchColumn == NULL)
+			continue;
+		
+		
+		BString columnPredicateString;
+		searchColumn->GetPredicateString(&columnPredicateString);
+		
+		if (columnPredicateString == "")
+			continue;
+
+		// TODO: Add the other combinators
+		if (combinatorShouldBeAdded) {
+			predicateStringSetter.Append("&&");
+		} else {
+			std::cout<<"combinator variable set"<<std::endl;
+			combinatorShouldBeAdded = true;
+		}
+		
+		predicateStringSetter.Append("(").Append(columnPredicateString).Append(")");
+	}
+	
+	int32 length = predicateStringSetter.Length();
+	if (predicateStringSetter.EndsWith("&&"))
+		predicateStringSetter.Truncate(length - 2);
+	
+	*predicateString = predicateStringSetter;
+	return B_OK;
+}
+
+
+status_t
+TFindPanel::GetMimeTypeString(BString* mimeTypeString) const
+{
+	if (mimeTypeString == NULL)
+		return B_BAD_VALUE;
+	
+	BString mimeTypeStringSetter;
+	BQuery mimeQuery;
+	PushMimeType(&mimeQuery);
+	status_t error;
+	if ((error = mimeQuery.GetPredicate(&mimeTypeStringSetter)) != B_OK)
+		return error;
+	*mimeTypeString = mimeTypeStringSetter;
+	return B_OK;
+}
+
+
+status_t
+ProcessPredicateString(BString* predicateString, BString* mimeTypeString)
+{
+	if (predicateString == NULL || mimeTypeString == NULL)
+		return B_BAD_VALUE;
+	
+	if (*predicateString == "")
+		*predicateString = "(name == \"**\")";
+	
+	if (*mimeTypeString != "" && *mimeTypeString != "(BEOS:TYPE==\"mime/ALLTYPES\")")
+		predicateString->Append("&&").Append(*mimeTypeString);
+	
+	BString temp = "(";
+	temp.Append(*predicateString).Append(")");
+	*predicateString = temp;
+
+	return B_OK;
+}
+
+
+static int32
+GetNumberOfVolumes()
+{
+	static int32 numberOfVolumes = -1;
+	if (numberOfVolumes >= 0)
+		return numberOfVolumes;
+
+	BVolumeRoster volumeRoster;
+	BVolume volume;
+	
+	int32 count = 0;
+	while (volumeRoster.GetNextVolume(&volume) == B_OK) {
+		if (volume.IsPersistent() && volume.KnowsQuery() && volume.KnowsAttr())
+			++count;
+	}
+	
+	numberOfVolumes = count;
+	return numberOfVolumes;
+	
+}
+
+
+status_t
+TFindPanel::WriteVolumesToFile()
+{
+	bool addAllVolumes = fVolMenu->ItemAt(0)->IsMarked();
+	int32 numberOfVolumes = GetNumberOfVolumes();
+	
+	BMessage messageContainingVolumeInfo;
+	for (int32 i = 2; i < numberOfVolumes + 2; ++i) {
+		BMenuItem* volumeMenuItem = fVolMenu->ItemAt(i);
+		BMessage* messageOfVolumeMenuItem = volumeMenuItem->Message();
+		dev_t device;
+		if (messageOfVolumeMenuItem->FindInt32("device", &device) != B_OK)
+			continue;
+		
+		if (volumeMenuItem->IsMarked() || addAllVolumes) {
+			BVolume volume(device);
+			EmbedUniqueVolumeInfo(&messageContainingVolumeInfo, &volume);
+		}
+		
+		ssize_t flattenedSize = messageContainingVolumeInfo.FlattenedSize();
+		if (flattenedSize > 0) {
+			BString bufferString;
+			char* buffer = bufferString.LockBuffer(flattenedSize);
+			messageContainingVolumeInfo.Flatten(buffer, flattenedSize);
+			if (fFile->WriteAttr("_trk/qryvol1", B_MESSAGE_TYPE, 0, buffer,
+					static_cast<size_t>(flattenedSize))
+				!= flattenedSize) {
+				return B_IO_ERROR;
+			}
+		}
+	}
+	
+	return B_OK;
+}
+
+
+status_t
+TFindPanel::SaveQueryAsAttributesToFile()
+{
+	if (fFile == NULL || fFileEntry == NULL)
+		return B_BAD_VALUE;
+	
+	status_t error;
+	if ((error = WriteVolumesToFile()) != B_OK)
+		return error;
+	
+	BString predicateString;
+	if ((error = GetPredicateString(&predicateString)) != B_OK)
+		return error;
+
+	std::cout<<predicateString<<std::endl;
+	BString mimeTypeString;
+	if ((error = GetMimeTypeString(&mimeTypeString)) != B_OK)
+		mimeTypeString = "";
+
+	if (predicateString.EndsWith("&&"))
+		predicateString.Truncate(predicateString.Length() - 2);
+
+	ProcessPredicateString(&predicateString, &mimeTypeString);
+	std::cout<<predicateString<<std::endl;
+
+	if ((error = WritePredicateStringToFile(&predicateString)) != B_OK)
+		return error;
+
+	return B_OK;
+}
+
+
+status_t
+TFindPanel::WritePredicateStringToFile(BString* predicateString)
+{
+	if (predicateString == NULL)
+		return B_BAD_VALUE;
+
+	if (fFile == NULL || fFileEntry == NULL)
+		return B_BAD_VALUE;
+	
+	return fFile->WriteAttrString("_trk/qrystr", predicateString);
+}
+
+
+status_t
+TFindPanel::SendUpdateToPoseView()
+{
+	BMessenger messenger(fQueryPoseView);
+	BMessage* message = new BMessage(kRefreshQueryResults);
+	entry_ref ref;
+	fFileEntry->GetRef(&ref);
+	
+	status_t error;
+	if ((error = message->AddRef("refs", &ref)) != B_OK)
+		return error;
+	
+	return messenger.SendMessage(message);
+}
+
+
+status_t
+TFindPanel::SendPauseToPoseView()
+{
+	BMessenger messenger(fQueryPoseView);
+	BMessage* message = new BMessage(kPauseSearchResults);
+	return messenger.SendMessage(message);
 }
 
 
@@ -708,393 +1098,33 @@ TFindPanel::ShowVolumeMenuLabel()
 }
 
 
-float
-TFindPanel::FindMaximumHeightOfColumns()
-{
-	float height = 0.0f;
-	int32 count = fColumnsContainer->CountChildren();
-	for (int32 i = 0; i < count; ++i) {
-		TAttributeSearchColumn* searchColumn = dynamic_cast<TAttributeSearchColumn*>(
-			fColumnsContainer->ChildAt(i));
-		if (searchColumn == NULL)
-			continue;
-		
-		BSize size;
-		if (searchColumn->GetRequiredHeight(&size) != B_OK)
-			continue;
-		
-		if (size.height > height)
-			height = size.height;
-	}
-	
-	return height;
-}
-
-
-void
-TFindPanel::HandleResizingColumnsContainer()
-{
-	float height = FindMaximumHeightOfColumns();
-	BSize size(B_SIZE_UNSET, height);
-	BSize containerSize(size);
-	containerSize.height += be_control_look->DefaultItemSpacing();
-	fColumnsContainer->SetExplicitSize(containerSize);
-	fColumnsContainer->SetExplicitPreferredSize(containerSize);
-	fColumnsContainer->ResizeTo(containerSize);
-	fColumnsContainer->Invalidate();
-
-	int32 count = fColumnsContainer->CountChildren();
-	for (int32 i = 0; i < count; ++i) {
-		TAttributeColumn* column = dynamic_cast<TAttributeColumn*>(fColumnsContainer->ChildAt(i));
-		if (column == NULL)
-			continue;
-		BMessage* message = new BMessage(kResizeHeight);
-		message->AddFloat("height", size.height);
-		BMessenger(column).SendMessage(message);
-	}
-}
-
-
-void
-TFindPanel::HandleMovingAColumn()
-{
-	float height = FindMaximumHeightOfColumns();
-	int32 count = fColumnsContainer->CountChildren();
-	for (int32 i = 0; i < count; ++i) {
-		TAttributeColumn* column = dynamic_cast<TAttributeColumn*>(fColumnsContainer->ChildAt(i));
-		if (column == NULL)
-			continue;
-		
-		BMessage* message = new BMessage(kMoveColumn);
-		message->AddFloat("height", height);
-		BMessenger(column).SendMessage(message);
-	}
-}
-
-
-bool
-CheckIfSearchColumnShouldBeAdded(const char* label)
-{
-	return !(!strcmp(label, B_TRANSLATE("Real name")) || !strcmp(label, B_TRANSLATE("Created")) ||
-		!strcmp(label, B_TRANSLATE("Kind")) || !strcmp(label, B_TRANSLATE("Location")) ||
-		!strcmp(label, B_TRANSLATE("Permissions")));
-}
-
-
-AttrType
-GetAttrTypeFromInt(int32 type)
-{
-	if (type == B_OFF_T_TYPE || type == B_INT32_TYPE)
-		return AttrType::SIZE;
-	else if (type == B_TIME_TYPE)
-		return AttrType::MODIFIED;
-	else
-		return AttrType::REGULAR_ATTRIBUTE;
-}
-
-
-status_t
-TFindPanel::AddAttributeColumn(BColumn* column)
-{
-	if (column == NULL)
-		return B_BAD_VALUE;
-	
-	BColumnTitle* title = fPoseView->ColumnTitleView()->FindColumnTitle(column);
-	if (title == NULL)
-		return B_BAD_VALUE;
-	
-	TAttributeColumn* attributeColumn = NULL;
-	if (CheckIfSearchColumnShouldBeAdded(column->Title())) {
-		AttrType type = GetAttrTypeFromInt(column->AttrType());
-		attributeColumn = new TAttributeSearchColumn(title, fColumnsContainer, type);
-		fColumnsContainer->AddChild(attributeColumn);
-		BMessenger(attributeColumn).SendMessage(new BMessage(kAddSearchField));
-	} else {
-		attributeColumn = new TDisabledSearchColumn(title);
-		fColumnsContainer->AddChild(attributeColumn);
-		BMessenger(this).SendMessage(new BMessage(kResizeHeight));
-	}
-	
-	return B_OK;
-}
-
-
-status_t
-TFindPanel::GetPredicateString(BString* predicateString) const
-{
-	if (predicateString == NULL)
-		return B_BAD_VALUE;
-
-	int32 numberOfColumns = fColumnsContainer->CountChildren();
-	int32 count = 0;
-	
-	BString findPanelPredicate = "";
-
-	for (int32 i = 0; i < numberOfColumns; ++i) {
-		TAttributeSearchColumn* searchColumn = dynamic_cast<TAttributeSearchColumn*>(
-			fColumnsContainer->ChildAt(i));
-		if (searchColumn == NULL)
-			continue;
-		
-		BString columnPredicateString;
-		searchColumn->GetPredicateString(&columnPredicateString);
-		
-		if (columnPredicateString == "")
-			continue;
-		
-		findPanelPredicate.Append("(");
-		findPanelPredicate.Append(columnPredicateString);
-		findPanelPredicate.Append(")");
-		
-		if (count != 1)
-			findPanelPredicate.Append("&&");
-		else
-			++count;
-	}
-	
-	int32 length = findPanelPredicate.Length();
-	if (length >= 2 && findPanelPredicate[length - 1] == '&')
-		findPanelPredicate.Truncate(length -2);
-	
-	*predicateString = findPanelPredicate;
-	return B_OK;
-}
-
-
-void
-TFindPanel::RestoreColumnsFromFile()
-{
-	ASSERT(fFile != NULL);
-	
-	attr_info info;
-	if (fFile->GetAttrInfo("columns", &info) != B_OK) {
-		std::cout<<"There is no attr info"<<std::endl;
-		debugger("");
-	}
-	
-	BString buffer;
-	char* bufferString = buffer.LockBuffer(info.size);
-	if (fFile->ReadAttr("columns", B_MESSAGE_TYPE, 0, bufferString, info.size) != info.size) {
-		std::cout<<"Huge Issue"<<std::endl;
-		debugger("");
-	}
-	
-	BMessage columnsMessage;
-	columnsMessage.Unflatten(bufferString);
-	
-	int count = 0;
-	
-	for (int32 i = 0; i < fColumnsContainer->CountChildren(); ++i) {
-		TAttributeSearchColumn* searchColumn = dynamic_cast<TAttributeSearchColumn*>(
-			fColumnsContainer->ChildAt(i));
-	
-		if (searchColumn == NULL)
-			continue;
-		
-		BMessage searchColumnMessage;
-		columnsMessage.FindMessage("columns", count++, &searchColumnMessage);
-		searchColumn->RestoreFromMessage(&searchColumnMessage);
-		
-		std::cout<<"Search Column Restored"<<std::endl;
-	}
-}
-
-
-void
-TFindPanel::WriteColumnsToFile()
-{
-	ASSERT(fFile != NULL);
-	
-	BMessage columnsMessage;
-	int32 countOfChildren = fColumnsContainer->CountChildren();
-	for (int32 i = 0; i < countOfChildren; ++i) {
-		TAttributeSearchColumn* searchColumn = dynamic_cast<TAttributeSearchColumn*>(
-			fColumnsContainer->ChildAt(i));
-		if (searchColumn == NULL)
-			continue;
-		
-		BMessage searchColumnMessage = searchColumn->ArchiveToMessage();
-		columnsMessage.AddMessage("columns", &searchColumnMessage);
-		// std::cout<<"Added One Column"<<std::endl;
-	}
-	
-	ssize_t flattenedSize = columnsMessage.FlattenedSize();
-	BString buffer;
-	char* bufferString = buffer.LockBuffer(flattenedSize);
-	if (columnsMessage.Flatten(bufferString, flattenedSize) != B_OK) {
-		// std::cout<<"There is a huge issue"<<std::endl;
-		debugger("");
-	}
-	
-	int32 countOfSearchFields = -1;
-	columnsMessage.GetInfo("columns", NULL, &countOfSearchFields);
-	// std::cout<<countOfSearchFields<<std::endl;
-	
-	if (fFile->WriteAttr("columns", B_MESSAGE_TYPE, 0, bufferString, flattenedSize) != flattenedSize) {
-		// std::cout<<"There is a huge issue 2"<<std::endl;
-		debugger("");
-	}
-}
-
-
-void
-TFindPanel::SaveQueryAsAttributesToFile()
-{
-	ASSERT(fFile != NULL);
-	
-	// Save volumes to the query
-	WriteVolumesToFile();
-	
-	BString predicateString;
-	GetPredicateString(&predicateString);
-	if (predicateString == "")
-		predicateString = "(name==\"**\")";
-	
-	BString mimeString;
-	BQuery mimeQuery;
-	PushMimeType(&mimeQuery);
-	mimeQuery.GetPredicate(&mimeString);
-	if (mimeString != "" && mimeString != "(BEOS:TYPE==\"mime/ALLTYPES\")") {
-		predicateString.Append("&&");
-		predicateString.Append(mimeString);
-	}
-	
-	WritePredicateToFile(&predicateString);
-	std::cout<<predicateString<<std::endl;
-}
-
-
-int32
-GetNumberOfVolumes()
-{
-	static int32 volumeCount = 0;
-	static bool volumesFound = false;
-	
-	BVolume volume;
-	BVolumeRoster roster;
-	while (roster.GetNextVolume(&volume) == B_OK && volumesFound == false) {
-		if (volume.KnowsQuery() && volume.IsPersistent() && volume.KnowsAttr())
-			++volumeCount;
-	}
-	
-	volumesFound = true;
-	return volumeCount;
-}
-
-
-void
-TFindPanel::WriteVolumesToFile()
-{
-	bool addAllVolumes = fVolMenu->ItemAt(0)->IsMarked();
-	int32 numberOfVolumes = GetNumberOfVolumes();
-	BMessage messageContainingVolumeInfo;
-	for (int32 i = 2;i < numberOfVolumes + 2; ++i) {
-		BMenuItem* volumeMenuItem = fVolMenu->ItemAt(i);
-		BMessage* messageOfVolumeMenuItem = volumeMenuItem->Message();
-		dev_t device;
-		if (messageOfVolumeMenuItem->FindInt32("device", &device) != B_OK)
-			continue;
-		
-		if (volumeMenuItem->IsMarked() || addAllVolumes) {
-			BVolume volume(device);
-			EmbedUniqueVolumeInfo(&messageContainingVolumeInfo, &volume);
-		}
-		
-		ssize_t flattenedSize = messageContainingVolumeInfo.FlattenedSize();
-		if (flattenedSize > 0) {
-			BString bufferString;
-			char* buffer = bufferString.LockBuffer(flattenedSize);
-			messageContainingVolumeInfo.Flatten(buffer, flattenedSize);
-			if (fFile->WriteAttr("_trk/qryvol1", B_MESSAGE_TYPE, 0, buffer,
-					static_cast<size_t>(flattenedSize))
-				!= flattenedSize) {
-				return;
-			}
-		}
-	}
-}
-
-
-void
-TFindPanel::WritePredicateToFile(const BString* predicateString)
-{
-	if (predicateString == NULL)
-		return;
-
-	fFile->WriteAttr("_trk/qrystr", B_STRING_TYPE, 0, predicateString->String(),
-		predicateString->Length());
-}
-
-void
-TFindPanel::SendPoseViewUpdateMessage()
-{
-	BMessenger messenger(fLooper);
-	BMessage* message = new BMessage(kUpdatePoseView);
-	entry_ref ref;
-	fEntry->GetRef(&ref);
-	message->AddRef("refs", &ref);
-	messenger.SendMessage(message);
-}
-
-
 void
 TFindPanel::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
-		case kOpenQuery:
-		{
-			RestoreColumnsFromFile();
-			break;
-		}
-	
-		case '1234':
-		{
-			if (strcmp(fPauseButton->Label(), "Pause") == 0) {
-				fPauseButton->SetLabel("Search");
-				BMessenger(fPoseView).SendMessage(new BMessage('1234'));
-			} else {
-				fPauseButton->SetLabel("Pause");
-				BMessenger(this).SendMessage(new BMessage(kModifiedField));
-			}
-			break;
-		}
-		
-		case '2345':
-		{
-			fPauseButton->SetLabel("Search");
-			break;
-		}
-	
 		case kAddColumn:
 		{
 			BColumn* column = NULL;
-			if (message->FindPointer("pointer", (void**)&column) != B_OK || column == NULL)
+			if (message->FindPointer("pointer", reinterpret_cast<void**>(&column)) != B_OK
+				|| column == NULL)
 				break;
 
 			AddAttributeColumn(column);
+			HandleResizingColumnsContainer();
 			break;
 		}
-		
+	
 		case kRemoveColumn:
 		{
-			std::cout<<"This is a test"<<std::endl;
-			BColumn* column;
-			if (message->FindPointer("pointer", reinterpret_cast<void**>(&column)) == B_OK) {
-				int32 columnsCount = fColumnsContainer->CountChildren();
-				for (int32 i = 0; i < columnsCount; ++i) {
-					TAttributeColumn* attributeColumn = dynamic_cast<TAttributeColumn*>(
-						fColumnsContainer->ChildAt(i));
-					if (attributeColumn->fColumnTitle->Column() == column) {
-						attributeColumn->RemoveSelf();
-						delete attributeColumn;
-						break;
-					}
-				}
-				HandleMovingAColumn();
-			}
+			BColumn* column = NULL;
+			if (message->FindPointer("pointer", reinterpret_cast<void**>(&column)) != B_OK
+				|| column == NULL)
+				break;
+			
+			RemoveAttributeColumn(column);
 			break;
 		}
-		
+	
 		case kResizeHeight:
 		{
 			HandleResizingColumnsContainer();
@@ -1107,6 +1137,32 @@ TFindPanel::MessageReceived(BMessage* message)
 			break;
 		}
 		
+		case kRefreshColumns:
+		{
+			HandleResizingColumns();
+			break;
+		}
+		
+		case kPauseOrSearch:
+		{
+			BString buttonLabel(fButton->Label());
+			if (buttonLabel == B_TRANSLATE("Pause")) {
+				fButton->SetLabel(B_TRANSLATE("Search"));
+				SendPauseToPoseView();
+			} else {
+				fButton->SetLabel(B_TRANSLATE("Pause"));
+				SaveQueryAsAttributesToFile();
+				SendUpdateToPoseView();
+			}
+			break;
+		}
+		
+		case kResetPauseButton:
+		{
+			fButton->SetLabel(B_TRANSLATE("Search"));
+			break;
+		}
+
 		case kTVolumeItem:
 		{
 			// volume changed
@@ -1151,7 +1207,7 @@ TFindPanel::MessageReceived(BMessage* message)
 
 			break;
 		}
-		
+
 		case kMIMETypeItem:
 		{
 			BMenuItem* item;
@@ -1164,17 +1220,10 @@ TFindPanel::MessageReceived(BMessage* message)
 			}
 			break;
 		}
-		
-		case kModifiedField:
-		{
-			SaveQueryAsAttributesToFile();
-			SendPoseViewUpdateMessage();
-			break;
-		}
-		
+
 		default:
 		{
-			__inherited::MessageReceived(message);
+			_inherited::MessageReceived(message);
 			break;
 		}
 	}
@@ -1387,3 +1436,4 @@ TMostUsedNames::UpdateList()
 }
 
 }
+

@@ -279,7 +279,6 @@ protected:
 
 	BGroupLayout* fRootLayout;
 	BGroupView* fMenuContainer;
-	BGroupView* fPanelContainer;
 	BGridView* fPoseContainer;
 	BorderedView* fBorderedView;
 	BGroupView* fVScrollBarContainer;

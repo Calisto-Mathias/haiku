@@ -2,10 +2,8 @@
 #define T_ATTRIBUTE_SEARCH_FIELD_H
 
 
-#include <Catalog.h>
-#include <Locale.h>
-#include <Query.h>
 #include <View.h>
+#include <Query.h>
 
 
 class BButton;
@@ -14,72 +12,104 @@ class BMenuItem;
 class BMessage;
 class BStringView;
 
-
 namespace BPrivate {
 
-class PopUpTextControl;
 class TAttributeSearchColumn;
+class TNumericAttributeSearchColumn;
+class TPopUpTextControl;
+class TStringAttributeSearchColumn;
+class TTemporalAttributeSearchColumn;
 
-
-const uint32 kMenuOptionClicked = 'Fmcl';
-const uint32 kAddSearchField = 'Fasf';
-const uint32 kRemoveSearchField = 'Frsf';
-const uint32 kModifiedField = 'Fmsf';
-
-
-enum class AttrType {
-	REGULAR_ATTRIBUTE,
-	SIZE,
-	MODIFIED
-};
-
-
-class TAttributeSearchField : public BView {
+class TAttributeSearchField : public BView
+{
 public:
-								TAttributeSearchField(TAttributeSearchColumn*, AttrType,
-									const char*);
-								~TAttributeSearchField();
+								TAttributeSearchField(TAttributeSearchColumn*);
+	virtual						~TAttributeSearchField();
 
-			status_t			GetPredicateString(BString*) const;
 			status_t			GetAttributeOperator(query_op*) const;
 			status_t			GetCombinationOperator(query_op*) const;
-
-			void				EnableRemoveButton(bool enable = true);
-			void				EnableAddButton(bool enable = true);
 			
-			status_t			GetSize(BSize*) const;
+			status_t			EnableRemoveButton(bool enable = true);
+			status_t			EnableAddButton(bool enable = true);
+			
+			status_t			GetRequiredSize(BSize*) const;
 			status_t			SetSize(BSize);
-			status_t			GetRequiredHeight(BSize*) const;
 
-			BMessage			ArchiveToMessage();
-			void				RestoreFromMessage(const BMessage*);
-
-			void				UpdateLabel();
-
-			PopUpTextControl*	TextControl() const {return fTextControl;};
+			status_t			UpdateLabel();
+			
+			TPopUpTextControl*	TextControl() const { return fTextControl; };
 
 protected:
 	virtual	void				MessageReceived(BMessage*);
 	virtual	void				AttachedToWindow();
+	
+	// Helper Functions that should be overriden by child classes
+	virtual	status_t			PopulateOptionsMenu();
+	virtual	query_op			GetAttributeOperatorFromIndex(int32) const;
+private:
+			bool				IsCombinationOperatorMenuItem(BMenuItem*) const;
+			status_t			HandleMenuOptionClicked(BMenuItem*);
+			status_t			GetRequiredHeight(float*) const;
+
+protected:
+			TPopUpTextControl*	fTextControl;
 
 private:
-			status_t			HandleMenuOptionClicked(BMenu*, BMenuItem*, bool);
-
-private:
-			BButton*				fAddButton;
-			BButton*				fRemoveButton;
-			PopUpTextControl*		fTextControl;
-			BStringView*			fLabel;
-			TAttributeSearchColumn*	fParent;
-			AttrType				fAttrType;
-			const char*				fAttrName;
+			BButton*			fAddButton;
+			BButton*			fRemoveButton;
+			BStringView*		fLabel;
 			
-			BSize					fSize;
-		
-			typedef BView __inherited;
-			friend class TAttributeSearchColumn;
+			TAttributeSearchColumn*	fAttributeColumn;
+			
+			BSize				fSize;
+			
+			typedef BView _inherited;
 };
 
-}
 
+class TNumericAttributeSearchField : public TAttributeSearchField
+{
+public:
+								TNumericAttributeSearchField(TNumericAttributeSearchColumn*);
+								~TNumericAttributeSearchField();
+
+protected:
+	virtual	status_t			PopulateOptionsMenu();
+	virtual	query_op			GetAttributeOperatorFromIndex(int32) const;
+
+private:
+			typedef TAttributeSearchField _inherited;
+};
+
+class TTemporalAttributeSearchField : public TAttributeSearchField
+{
+public:
+								TTemporalAttributeSearchField(TTemporalAttributeSearchColumn*);
+								~TTemporalAttributeSearchField();
+
+protected:
+	virtual	status_t			PopulateOptionsMenu();
+	virtual	query_op			GetAttributeOperatorFromIndex(int32) const;
+
+private:
+			typedef TAttributeSearchField _inherited;
+};
+
+
+class TStringAttributeSearchField : public TAttributeSearchField
+{
+public:
+								TStringAttributeSearchField(TStringAttributeSearchColumn*);
+								~TStringAttributeSearchField();
+
+protected:
+	virtual	status_t			PopulateOptionsMenu();
+	virtual	query_op			GetAttributeOperatorFromIndex(int32) const;
+
+private:
+			typedef TAttributeSearchField _inherited;
+};
+
+
+}
 #endif

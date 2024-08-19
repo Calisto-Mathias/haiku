@@ -34,10 +34,8 @@ All rights reserved.
 
 
 #include <Catalog.h>
-#include <LayoutBuilder.h>
 #include <Locale.h>
 #include <Menu.h>
-#include <MenuBar.h>
 #include <MenuItem.h>
 #include <Path.h>
 #include <PopUpMenu.h>
@@ -46,10 +44,9 @@ All rights reserved.
 
 #include "Attributes.h"
 #include "Commands.h"
+#include "TFindPanel.h"
 #include "QueryContainerWindow.h"
 #include "QueryPoseView.h"
-#include "TFindPanel.h"
-#include "TFindPanelLooper.h"
 
 
 //	#pragma mark - BQueryContainerWindow
@@ -62,10 +59,7 @@ All rights reserved.
 BQueryContainerWindow::BQueryContainerWindow(LockingList<BWindow>* windowList,
 	uint32 openFlags)
 	:
-	BContainerWindow(windowList, openFlags),
-	fQueryMenu(NULL),
-	fFindPanel(NULL),
-	fFindPanelLooper(NULL)
+	BContainerWindow(windowList, openFlags)
 {
 }
 
@@ -89,22 +83,14 @@ BQueryContainerWindow::CreatePoseView(Model* model)
 {
 	fPoseView = NewPoseView(model, kListMode);
 
+	PoseView()->fFindPanel = new TFindPanel(this, PoseView());
+	fFindPanelContainer = new BGroupView(B_VERTICAL, 0.0f);
+	fFindPanelContainer->GroupLayout()->AddView(PoseView()->fFindPanel);
+	fRootLayout->AddView(1, fFindPanelContainer);
+
 	fBorderedView->GroupLayout()->AddView(fPoseView);
 	fBorderedView->EnableBorderHighlight(false);
 	fBorderedView->GroupLayout()->SetInsets(0, 0, 1, 1);
-	
-	BQueryPoseView* queryPoseView = dynamic_cast<BQueryPoseView*>(fPoseView);
-	ASSERT(queryPoseView != NULL);
-	
-	fPanelContainer = new BGroupView(B_HORIZONTAL, 0);
-	fRootLayout->AddView(1, fPanelContainer);
-	
-	fFindPanelLooper = new TFindPanelLooper(queryPoseView);
-	fFindPanelLooper->Run();
-	fFindPanel = new TFindPanel(this, queryPoseView, fFindPanelLooper);
-	queryPoseView->SetFindPanel(fFindPanel);
-	BLayoutBuilder::Group<>(fPanelContainer->GroupLayout())
-		.Add(fFindPanel);
 }
 
 

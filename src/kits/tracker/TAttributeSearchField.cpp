@@ -1,192 +1,50 @@
 #include "TAttributeSearchField.h"
 
 
-#include <utility>
 #include <iostream>
-
 #include <fs_attr.h>
 
 #include <Button.h>
 #include <Catalog.h>
+#include <Debug.h>
 #include <LayoutBuilder.h>
-#include <Locale.h>
-#include <Menu.h>
-#include <MenuItem.h>
-#include <Message.h>
 #include <PopUpMenu.h>
-#include <Query.h>
 #include <StringView.h>
 
 #include "TAttributeColumn.h"
-#include "PopUpTextControl.h"
+#include "TFindPanelConstants.h"
+#include "TPopUpTextControl.h"
 
 namespace BPrivate {
 
-static const char* combinationOperators[] = {
-	B_TRANSLATE_MARK("and"),
-	B_TRANSLATE_MARK("or"),
-};
-
-static const int32 combinationOperatorsLength = sizeof(combinationOperators) / sizeof(
-	combinationOperators[0]);
-
-static const query_op combinationQueryOps[] = {
-	B_AND,
-	B_OR
-};
-
-static const char* regularAttributeOperators[] = {
-	B_TRANSLATE_MARK("contains"),
-	B_TRANSLATE_MARK("is"),
-	B_TRANSLATE_MARK("is not"),
-	B_TRANSLATE_MARK("starts with"),
-	B_TRANSLATE_MARK("ends with")
-};
-
-static const query_op regularQueryOps[] = {
-	B_CONTAINS,
-	B_EQ,
-	B_NE,
-	B_BEGINS_WITH,
-	B_ENDS_WITH
-};
-
-static const int32 regularAttributeOperatorsLength = sizeof(regularAttributeOperators) / 
-	sizeof(regularAttributeOperators[0]);
-
-static const char* sizeAttributeOperators[] = {
-	B_TRANSLATE_MARK("greater than"),
-	B_TRANSLATE_MARK("less than"),
-	B_TRANSLATE_MARK("is")
-};
-
-static const query_op sizeQueryOps[] = {
-	B_GT,
-	B_LT,
-	B_EQ
-};
-
-static const int32 sizeAttributeOperatorsLength = sizeof(sizeAttributeOperators) / sizeof(
-	sizeAttributeOperators[0]);
-
-static const char* modifiedAttributeOperators[] = {
-	B_TRANSLATE_MARK("before"),
-	B_TRANSLATE_MARK("after")
-};
-
-static const query_op modifiedQueryOps[] = {
-	B_LT,
-	B_GT
-};
-
-static const int32 modifiedAttributeOperatorsLength = sizeof(modifiedAttributeOperators) /
-	sizeof(modifiedAttributeOperators[0]);
-
-void
-PopulateOptionsMenuWithOperators(BMenu* menu, AttrType attrType) {
-	for (int32 i = 0; i < combinationOperatorsLength; ++i) {
-		BMenuItem* item = new BMenuItem(combinationOperators[i], NULL);
-		BMessage* message = new BMessage(kMenuOptionClicked);
-		message->AddPointer("pointer", item);
-		message->AddBool("combination", true);
-		item->SetMessage(message);
-		menu->AddItem(item);
-	}
-	menu->AddSeparatorItem();
-	
-	const char** attrOperators = NULL;
-	int32 attrOperatorsCount = 0;
-	
-	switch (attrType) {
-		case AttrType::REGULAR_ATTRIBUTE:
-		{
-			attrOperators = regularAttributeOperators;
-			attrOperatorsCount = regularAttributeOperatorsLength;
-			break;
-		}
-		case AttrType::SIZE:
-		{
-			attrOperators = sizeAttributeOperators;
-			attrOperatorsCount = sizeAttributeOperatorsLength;
-			break;
-		}
-		case AttrType::MODIFIED:
-		{
-			attrOperators = modifiedAttributeOperators;
-			attrOperatorsCount = modifiedAttributeOperatorsLength;
-			break;
-		}
-	}
-	
-	for (int32 i = 0; i < attrOperatorsCount; ++i) {
-		BMenuItem* item = new BMenuItem(attrOperators[i], NULL);
-		BMessage* message = new BMessage(kMenuOptionClicked);
-		message->AddPointer("pointer", item);
-		message->AddBool("combination", false);
-		item->SetMessage(message);
-		menu->AddItem(item);
-	}
-}
-
-
-status_t
-TAttributeSearchField::GetSize(BSize* size) const
-{
-	if (size == NULL)
-		return B_BAD_VALUE;
-
-	*size = fSize;
-	return B_OK;
-}
-
-
-status_t
-TAttributeSearchField::SetSize(BSize size)
-{
-	fSize = size;
-	ResizeTo(fSize);
-	SetExplicitSize(fSize);
-	SetExplicitPreferredSize(fSize);
-	
-	return B_OK;
-}
-
-
-TAttributeSearchField::TAttributeSearchField(TAttributeSearchColumn* parent,
-	AttrType attrType, const char* attrName)
+TAttributeSearchField::TAttributeSearchField(TAttributeSearchColumn* column)
 	:
-	BView("attribute-search-field", B_WILL_DRAW),
-	fParent(parent)
+	BView("search-field", B_WILL_DRAW),
+	fAttributeColumn(column)
 {
-	fAttrName = attrName;
-
+	fTextControl = new TPopUpTextControl(this);
 	fLabel = new BStringView("label", NULL);
-	fTextControl = new PopUpTextControl("text-control", NULL, NULL, this);
-	fAttrType = attrType;
-	PopulateOptionsMenuWithOperators(fTextControl->PopUpMenu(), attrType);
 	
-	fAddButton = new BButton("+", NULL);
+	fAddButton = new BButton(B_TRANSLATE("+"), NULL);
 	BMessage* message = new BMessage(kAddSearchField);
 	message->AddPointer("pointer", this);
 	fAddButton->SetMessage(message);
 	
-	fRemoveButton = new BButton("-", NULL);
+	fRemoveButton = new BButton(B_TRANSLATE("-"), NULL);
 	message = new BMessage(kRemoveSearchField);
 	message->AddPointer("pointer", this);
 	fRemoveButton->SetMessage(message);
 	
 	BSize textControlSize = fTextControl->PreferredSize();
-	BSize buttonSize = BSize(textControlSize.height, textControlSize.height);
+	BSize buttonSize(textControlSize.Height(), textControlSize.Height());
 	fAddButton->ResizeTo(buttonSize);
 	fRemoveButton->ResizeTo(buttonSize);
 	fAddButton->SetExplicitSize(buttonSize);
 	fRemoveButton->SetExplicitSize(buttonSize);
+	fAddButton->SetExplicitPreferredSize(buttonSize);
+	fRemoveButton->SetExplicitPreferredSize(buttonSize);
 	
-	fTextControl->PopUpMenu()->ItemAt(0)->SetMarked(true);
-	fTextControl->PopUpMenu()->ItemAt(combinationOperatorsLength + 1)->SetMarked(true);
-	UpdateLabel();
-	
-	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
+	BLayoutBuilder::Group<>(this, B_VERTICAL, 0.0f)
 		.Add(fLabel)
 		.AddGroup(B_HORIZONTAL, 0.0f)
 			.Add(fTextControl)
@@ -196,14 +54,13 @@ TAttributeSearchField::TAttributeSearchField(TAttributeSearchColumn* parent,
 	.End();
 	
 	BSize size;
-	GetRequiredHeight(&size);
+	GetRequiredSize(&size);
 	SetSize(size);
 }
 
 
 TAttributeSearchField::~TAttributeSearchField()
 {
-	// Empty destructor!
 }
 
 
@@ -218,22 +75,87 @@ TAttributeSearchField::AttachedToWindow()
 }
 
 
+query_op
+TAttributeSearchField::GetAttributeOperatorFromIndex(int32 index) const
+{
+	// Must be overridden by child function.
+	return B_AND;
+}
+
+
 status_t
-TAttributeSearchField::HandleMenuOptionClicked(BMenu* menu, BMenuItem* item,
-	bool isCombinationOperator)
+TAttributeSearchField::SetSize(BSize size)
+{
+	fSize = size;
+	ResizeTo(fSize);
+	SetExplicitSize(fSize);
+	SetExplicitPreferredSize(fSize);
+	return B_OK;
+}
+
+
+status_t
+TAttributeSearchField::PopulateOptionsMenu()
+{
+	if (fTextControl->PopUpMenu() == NULL)
+		return B_BAD_VALUE;
+
+	for (int32 i = 0; i < combinationOperatorsLength; ++i) {
+		BMenuItem* item = new BMenuItem(combinationOperators[i], NULL);
+		BMessage* message = new BMessage(kMenuOptionClicked);
+		status_t error;
+		if ((error = message->AddPointer("pointer", item)) != B_OK) {
+			delete item;
+			delete message;
+			return error;
+		}
+		
+		item->SetMessage(message);
+		fTextControl->PopUpMenu()->AddItem(item);
+	}
+	
+	fTextControl->PopUpMenu()->AddSeparatorItem();
+	
+	return B_OK;
+}
+
+
+bool
+TAttributeSearchField::IsCombinationOperatorMenuItem(BMenuItem* item) const
+{
+	if (item == NULL)
+		return false;
+	
+	for (int32 i = 0; i < combinationOperatorsLength; ++i) {
+		if (item == fTextControl->PopUpMenu()->ItemAt(i))
+			return true;
+	}
+	
+	return false;
+}
+
+
+status_t
+TAttributeSearchField::HandleMenuOptionClicked(BMenuItem* item)
 {
 	if (item == NULL)
 		return B_BAD_VALUE;
 	
-	int32 startingIndex = isCombinationOperator ? 0: combinationOperatorsLength;
-	int32 endingIndex = isCombinationOperator ? combinationOperatorsLength : menu->CountItems();
+	BMenu* menu = fTextControl->PopUpMenu();
+	if (menu == NULL)
+		return B_BAD_VALUE;
+	
+	bool isCombinationOperator = IsCombinationOperatorMenuItem(item);
+	std::cout<<isCombinationOperator<<std::endl;
+	
+	int32 startingIndex = isCombinationOperator ? 0 : combinationOperatorsLength + 1;
+	int32 endingIndex = isCombinationOperator ? combinationOperatorsLength + 1: menu->CountItems();
 	
 	for (int32 i = startingIndex; i < endingIndex; ++i)
 		menu->ItemAt(i)->SetMarked(false);
 	
 	item->SetMarked(true);
-	UpdateLabel();
-	return B_OK;
+	return UpdateLabel();
 }
 
 
@@ -243,6 +165,7 @@ TAttributeSearchField::GetAttributeOperator(query_op* attributeOperator) const
 	if (attributeOperator == NULL)
 		return B_BAD_VALUE;
 	
+	ASSERT(fTextControl != NULL);
 	BPopUpMenu* optionsMenu = fTextControl->PopUpMenu();
 	int32 attributeOperatorIndex = -1;
 	for (int32 i = combinationOperatorsLength + 1; i < optionsMenu->CountItems(); ++i) {
@@ -255,9 +178,7 @@ TAttributeSearchField::GetAttributeOperator(query_op* attributeOperator) const
 	if (attributeOperatorIndex == -1)
 		return B_ENTRY_NOT_FOUND;
 	
-	const query_op* operators = fAttrType == AttrType::REGULAR_ATTRIBUTE ? regularQueryOps :
-		fAttrType == AttrType::SIZE ? sizeQueryOps : modifiedQueryOps;
-	*attributeOperator = operators[attributeOperatorIndex];
+	*attributeOperator = GetAttributeOperatorFromIndex(attributeOperatorIndex);
 	return B_OK;
 }
 
@@ -286,59 +207,88 @@ TAttributeSearchField::GetCombinationOperator(query_op* combinationOperator) con
 
 
 status_t
-TAttributeSearchField::GetPredicateString(BString* predicateString) const
+TAttributeSearchField::UpdateLabel()
 {
-	if (predicateString == NULL)
+	BPopUpMenu* menu = fTextControl->PopUpMenu();
+	if (menu == NULL)
 		return B_BAD_VALUE;
 	
-	if (strcmp(fTextControl->Text(), "") == 0) {
-		*predicateString = "";
-		return B_CANCELED;
+	BString combinationOperatorLabel = "";
+	BString actionOperatorLabel = "";
+	
+	for (int32 i = combinationOperatorsLength + 1; i < menu->CountItems(); ++i) {
+		BMenuItem* item = menu->ItemAt(i);
+		if (item && item->IsMarked())
+			actionOperatorLabel = item->Label();
 	}
 	
-	BPopUpMenu* optionsMenu = fTextControl->PopUpMenu();
-	int32 attributeOperatorIndex = -1;
-	
-	for (int32 i = combinationOperatorsLength + 1; i < optionsMenu->CountItems(); ++i) {
-		if (optionsMenu->ItemAt(i)->IsMarked()) {
-			attributeOperatorIndex = i - combinationOperatorsLength - 1;
-			break;
-		}
+	for (int32 i = 0; i < combinationOperatorsLength + 1; ++i) {
+		BMenuItem* item = menu->ItemAt(i);
+		if (item && item->IsMarked())
+			combinationOperatorLabel = item->Label();
 	}
 	
-	BQuery predicateStringCreatorMessage;
-	predicateStringCreatorMessage.PushAttr(fAttrName);
-	predicateStringCreatorMessage.PushString(fTextControl->Text(), true);
-	const query_op* operators = fAttrType == AttrType::REGULAR_ATTRIBUTE ? regularQueryOps :
-		fAttrType == AttrType::SIZE ? sizeQueryOps : modifiedQueryOps;
-	predicateStringCreatorMessage.PushOp(operators[attributeOperatorIndex]);
+	if (combinationOperatorLabel == "" && actionOperatorLabel == "")
+		return B_ENTRY_NOT_FOUND;
 	
-	predicateStringCreatorMessage.GetPredicate(predicateString);
-	
+	if (combinationOperatorLabel == "") {
+		fLabel->SetText(actionOperatorLabel.String());
+	} else {
+		combinationOperatorLabel.Append(" ").Append(actionOperatorLabel);
+		fLabel->SetText(combinationOperatorLabel);
+	}
+
 	return B_OK;
 }
 
 
-void
-TAttributeSearchField::RestoreFromMessage(const BMessage* message)
+status_t
+TAttributeSearchField::EnableAddButton(bool enable)
 {
+	if (fAddButton == NULL)
+		return B_ERROR;
 	
+	fAddButton->SetEnabled(enable);
+	return B_OK;
 }
 
 
-BMessage
-TAttributeSearchField::ArchiveToMessage()
+status_t
+TAttributeSearchField::EnableRemoveButton(bool enable)
 {
-	BMessage searchFieldMessage;
-	int32 count = fTextControl->PopUpMenu()->CountItems();
-	for (int32 i = 0; i < count; ++i) {
-		BMenuItem* item = fTextControl->PopUpMenu()->ItemAt(i);
-		if (item->IsMarked())
-			searchFieldMessage.AddString("menu-item", item->Label());
-	}
+	if (fRemoveButton == NULL)
+		return B_ERROR;
 	
-	searchFieldMessage.AddString("text-control", fTextControl->Text());
-	return searchFieldMessage;
+	fRemoveButton->SetEnabled(enable);
+	return B_OK;
+}
+
+
+status_t
+TAttributeSearchField::GetRequiredSize(BSize* size) const
+{
+	if (size == NULL)
+		return B_BAD_VALUE;
+
+	float height;
+	GetRequiredHeight(&height);
+	
+	*size = BSize(B_SIZE_UNSET, height);
+	return B_OK;
+}
+
+
+status_t
+TAttributeSearchField::GetRequiredHeight(float* height) const
+{
+	if (height == NULL)
+		return B_BAD_VALUE;
+		
+	float heightSetter = 0.0f;
+	heightSetter += fTextControl->PreferredSize().Height();
+	heightSetter += fTextControl->PreferredSize().Height();
+	*height = heightSetter;
+	return B_OK;
 }
 
 
@@ -346,98 +296,180 @@ void
 TAttributeSearchField::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
-		case kAddSearchField:
-		case kRemoveSearchField:
-		{
-			BMessenger(fParent).SendMessage(message);
-			break;
-		}
-		
 		case kMenuOptionClicked:
 		{
 			BMenuItem* source = NULL;
-			if (message->FindPointer("pointer", (void**)&source) != B_OK || source == NULL)
+			if (message->FindPointer("pointer", reinterpret_cast<void**>(&source)) != B_OK
+				|| source == NULL) {
 				break;
+			}
 			
-			bool isCombinationOperator;
-			if (message->FindBool("combination", &isCombinationOperator) != B_OK)
-				break;
-			
-			HandleMenuOptionClicked(fTextControl->PopUpMenu(), source, isCombinationOperator);
+			HandleMenuOptionClicked(source);
 			break;
 		}
+	
 		default:
 		{
-			__inherited::MessageReceived(message);
+			_inherited::MessageReceived(message);
 			break;
 		}
 	}
 }
 
 
-void
-TAttributeSearchField::UpdateLabel()
+TNumericAttributeSearchField::TNumericAttributeSearchField(
+	TNumericAttributeSearchColumn* column)
+	:
+	TAttributeSearchField(column)
 {
-	BPopUpMenu* menu = fTextControl->PopUpMenu();
-	int32 count = menu->CountItems();
-	
-	BString combinationOperatorLabel = "";
-	BString operatorLabel = "";
-	
-	for (int32 i = 0; i < combinationOperatorsLength; i++) {
-		BMenuItem* item = menu->ItemAt(i);
-		if (item->IsMarked())
-			combinationOperatorLabel = item->Label();
-	}
-	
-	for (int32 i = combinationOperatorsLength + 1; i < count; i++) {
-		BMenuItem* item = menu->ItemAt(i);
-		if (item->IsMarked())
-			operatorLabel = item->Label();
-	}
-	
-	if (combinationOperatorLabel == "") {
-		fLabel->SetText(operatorLabel.String());
-		return;
-	}
-	
-	combinationOperatorLabel.Append(" ");
-	combinationOperatorLabel.Append(operatorLabel);
-	fLabel->SetText(combinationOperatorLabel.String());
+	PopulateOptionsMenu();
+	fTextControl->PopUpMenu()->ItemAt(0)->SetMarked(true);
+	fTextControl->PopUpMenu()->ItemAt(combinationOperatorsLength + 1)->SetMarked(true);
+	UpdateLabel();
 }
 
 
-void
-TAttributeSearchField::EnableAddButton(bool enable)
+TNumericAttributeSearchField::~TNumericAttributeSearchField()
 {
-	fAddButton->SetEnabled(enable);
-}
-
-
-void
-TAttributeSearchField::EnableRemoveButton(bool enable)
-{
-	fRemoveButton->SetEnabled(enable);
 }
 
 
 status_t
-TAttributeSearchField::GetRequiredHeight(BSize* size) const
+TNumericAttributeSearchField::PopulateOptionsMenu()
 {
-	if (size == NULL)
-		return B_BAD_VALUE;
+	_inherited::PopulateOptionsMenu();
+
+	BPopUpMenu* optionsMenu = fTextControl->PopUpMenu();
+	for (int32 i = 0; i < numericAttributeOperatorsLength; ++i) {
+		BMenuItem* item = new BMenuItem(numericAttributeOperators[i], NULL);
+		BMessage* message = new BMessage(kMenuOptionClicked);
+		status_t error;
+		if ((error = message->AddPointer("pointer", item)) != B_OK) {
+			delete item;
+			delete message;
+			return error;
+		}
+		item->SetMessage(message);
+		optionsMenu->AddItem(item);
+	}
 	
-	float width = B_SIZE_UNSET;
-	float height = 0.0f;
-	height += fTextControl->PreferredSize().height;
-	height += fLabel->PreferredSize().height;
-	height += 2.0f;
-		// Spacing in between the BTextControl and the BStringView
-	height += 4.0f;
-		// 2.0f padding on both the top and bottom
-	
-	*size = BSize(width, height);
 	return B_OK;
 }
+
+
+query_op
+TNumericAttributeSearchField::GetAttributeOperatorFromIndex(int32 index) const
+{
+	if (index < 0 || index >= numericAttributeOperatorsLength)
+		return B_AND;
+	
+	return numericQueryOps[index];
+}
+
+
+TTemporalAttributeSearchField::TTemporalAttributeSearchField(
+	TTemporalAttributeSearchColumn* searchColumn)
+	:
+	TAttributeSearchField(searchColumn)
+{
+	PopulateOptionsMenu();
+	fTextControl->PopUpMenu()->ItemAt(0)->SetMarked(true);
+	fTextControl->PopUpMenu()->ItemAt(combinationOperatorsLength + 1)->SetMarked(true);
+	UpdateLabel();
+}
+
+
+TTemporalAttributeSearchField::~TTemporalAttributeSearchField()
+{
+}
+
+
+status_t
+TTemporalAttributeSearchField::PopulateOptionsMenu()
+{
+	_inherited::PopulateOptionsMenu();
+
+	BPopUpMenu* optionsMenu = fTextControl->PopUpMenu();
+	if (optionsMenu == NULL)
+		return B_BAD_VALUE;
+	
+	for (int32 i = 0; i < temporalAttributeOperatorsLength; ++i) {
+		BMenuItem* item = new BMenuItem(temporalAttributeOperators[i], NULL);
+		BMessage* message = new BMessage(kMenuOptionClicked);
+		status_t error;
+		if ((error = message->AddPointer("pointer", item)) != B_OK) {
+			delete item;
+			delete message;
+			return error;
+		}
+		item->SetMessage(message);
+		optionsMenu->AddItem(item);
+	}
+
+	return B_OK;
+}
+
+
+query_op
+TTemporalAttributeSearchField::GetAttributeOperatorFromIndex(int32 index) const
+{
+	if (index < 0 || index >= temporalAttributeOperatorsLength)
+		return B_AND;
+	
+	return temporalQueryOps[index];
+}
+
+
+TStringAttributeSearchField::TStringAttributeSearchField(TStringAttributeSearchColumn* column)
+	:
+	TAttributeSearchField(column)
+{
+	PopulateOptionsMenu();
+	fTextControl->PopUpMenu()->ItemAt(0)->SetMarked(true);
+	fTextControl->PopUpMenu()->ItemAt(combinationOperatorsLength + 1)->SetMarked(true);
+	UpdateLabel();
+}
+
+
+TStringAttributeSearchField::~TStringAttributeSearchField()
+{
+}
+
+
+status_t
+TStringAttributeSearchField::PopulateOptionsMenu()
+{
+	_inherited::PopulateOptionsMenu();
+
+	BPopUpMenu* menu = fTextControl->PopUpMenu();
+	if (menu == NULL)
+		return B_BAD_VALUE;
+	
+	for (int32 i = 0; i < stringAttributeOperatorsLength; ++i) {
+		BMenuItem* item = new BMenuItem(stringAttributeOperators[i], NULL);
+		BMessage* message = new BMessage(kMenuOptionClicked);
+		status_t error;
+		if ((error = message->AddPointer("pointer", item)) != B_OK) {
+			delete item;
+			delete message;
+			return error;
+		}
+		item->SetMessage(message);
+		menu->AddItem(item);
+	}
+	
+	return B_OK;
+}
+
+
+query_op
+TStringAttributeSearchField::GetAttributeOperatorFromIndex(int32 index) const
+{
+	if (index < 0 || index >= stringAttributeOperatorsLength)
+		return B_AND;
+	
+	return stringQueryOps[index];
+}
+
 
 }

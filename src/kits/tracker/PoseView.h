@@ -678,6 +678,7 @@ protected:
 
 	void ExcludeTrashFromSelection();
 
+	virtual BTitleView* CreateTitleView();
 private:
 	void DrawOpenAnimation(BRect);
 	void ApplyBackgroundColor();
@@ -726,13 +727,11 @@ protected:
 	BLooper* fSelectionHandler;
 
 	std::set<thread_id> fAddPosesThreads;
-	HashSet<node_ref_key> fInsertedNodes;
 	PoseList* fPoseList;
 
 	PendingNodeMonitorCache pendingNodeMonitorCache;
-	BTitleView* fTitleView;
-	Model* fModel;
 
+	Model* fModel;
 private:
 	TScrollBar* fHScrollBar;
 	BScrollBar* fVScrollBar;
@@ -742,6 +741,7 @@ private:
 	PoseList* fFilteredPoseList;
 	PoseList* fVSPoseList;
 	PoseList* fSelectionList;
+	HashSet<node_ref_key> fInsertedNodes;
 	BObjectList<BString> fMimeTypesInSelectionCache;
 		// used for mime string based icon highliting during a drag
 	BObjectList<Model>* fZombieList;
@@ -760,6 +760,7 @@ private:
 	const BPose* fLastClickedPose;
 	BPoint fLastLeftTop;
 	BRect fLastExtent;
+	BTitleView* fTitleView;
 	BRefFilter* fRefFilter;
 	BPoint fGrid;
 	BPoint fOffset;

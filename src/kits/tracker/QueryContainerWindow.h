@@ -46,16 +46,7 @@ namespace BPrivate {
 
 #define kQueryTemplates "DefaultQueryTemplates"
 
-
-const uint32 kSaveQuery = 'Fsqr';
-const uint32 kSaveAsQuery = 'Fsaq';
-const uint32 kOpenQuery = 'Foqr';
-const uint32 kSearchTrash = 'Fstr';
-
-
 class BQueryPoseView;
-class TFindPanel;
-
 
 class BQueryContainerWindow : public BContainerWindow {
 public:
@@ -73,11 +64,9 @@ protected:
 	virtual	void				AddWindowContextMenus(BMenu* menu);
 
 	virtual	void				SetupDefaultState();
-	
+
 private:
-			BMenu*				fQueryMenu;
-			TFindPanel*			fFindPanel;
-			BLooper*			fFindPanelLooper;
+			BGroupView*			fFindPanelContainer;
 
 	typedef BContainerWindow	_inherited;
 };

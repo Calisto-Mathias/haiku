@@ -35,6 +35,7 @@ All rights reserved.
 
 #include "PoseView.h"
 
+#include <iostream>
 #include <algorithm>
 #include <functional>
 #include <map>
@@ -93,6 +94,7 @@ All rights reserved.
 #include "Pose.h"
 #include "QueryPoseView.h"
 #include "InfoWindow.h"
+#include "TitleView.h"
 #include "Tests.h"
 #include "Thread.h"
 #include "Tracker.h"
@@ -233,7 +235,6 @@ BPoseView::BPoseView(Model* model, uint32 viewMode)
 	fDropEnabled(true),
 	fSelectionHandler(be_app),
 	fPoseList(new PoseList(40, true)),
-	fTitleView(NULL),
 	fModel(model),
 	fHScrollBar(NULL),
 	fVScrollBar(NULL),
@@ -257,6 +258,7 @@ BPoseView::BPoseView(Model* model, uint32 viewMode)
 	fLastClickButtons(0),
 	fLastClickedPose(NULL),
 	fLastExtent(INT32_MAX, INT32_MAX, INT32_MIN, INT32_MIN),
+	fTitleView(NULL),
 	fRefFilter(NULL),
 	fAutoScrollInc(20),
 	fAutoScrollState(kAutoScrollOff),
@@ -302,8 +304,6 @@ BPoseView::BPoseView(Model* model, uint32 viewMode)
 
 BPoseView::~BPoseView()
 {
-	fAddPosesThreads.clear();
-
 	delete fPoseList;
 	delete fFilteredPoseList;
 	delete fVSPoseList;
@@ -333,6 +333,13 @@ BPoseView::Init(const BMessage &message)
 {
 	RestoreState(message);
 	InitCommon();
+}
+
+
+BTitleView*
+BPoseView::CreateTitleView()
+{
+	return new BTitleView(this);
 }
 
 
@@ -1290,7 +1297,7 @@ BPoseView::AddPoses(Model* model)
 	AddPosesParams* params = new AddPosesParams();
 	BMessenger tmp(this);
 	params->target = tmp;
-	
+
 	if (model != NULL)
 		params->ref = *model->EntryRef();
 
@@ -1433,6 +1440,7 @@ BPoseView::AddPosesTask(void* castToParams)
 	try {
 		for (;;) {
 			lock.Unlock();
+
 			status_t result = B_OK;
 			char entBuf[1024];
 			dirent* eptr = (dirent*)entBuf;
@@ -1482,8 +1490,7 @@ BPoseView::AddPosesTask(void* castToParams)
 				// switched and an old AddPosesTask needs to die.
 				// we might no longer be the current async thread
 				// for this view - if not then we're done
-				if (view->fAddPosesThreads.size() == 0)
-					view->HideBarberPole();
+				view->HideBarberPole();
 
 				view->ReturnDirentIterator(container);
 				container = NULL;

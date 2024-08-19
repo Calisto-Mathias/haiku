@@ -2,107 +2,136 @@
 #define T_ATTRIBUTE_COLUMN_H
 
 
+#include <ObjectList.h>
 #include <View.h>
 
 
 class BBox;
 class BGroupView;
-class BHandler;
-class BMessage;
-template <typename T> class BObjectList;
-class BSize;
-
+class BMenu;
 
 namespace BPrivate {
 
+enum class AttributeType;
+class BColumn;
 class BColumnTitle;
 class TAttributeSearchField;
+class TFindPanel;
 
-
-const uint32 kResizeHeight = 'Frht';
-
-enum class AttrType;
-
-// A BView Class that expands throughout the space occupied by its parent - padding
-class TAttributeColumn : public BView {
+class TAttributeColumn : public BView
+{
 public:
 	virtual						~TAttributeColumn();
 
-			status_t				SetSize(BSize);
-			status_t				GetSize(BSize*) const;
+			status_t			GetSize(BSize*) const;
+			status_t			SetSize(BSize);
 			
-			status_t				SetColumnTitle(BColumnTitle*);
-			status_t				GetColumnTitle(BColumnTitle**) const;
+			status_t			GetColumnTitle(BColumnTitle**) const;
+			status_t			SetColumnTitle(BColumnTitle**);
+			
+			status_t			GetColumn(BColumn**) const;
+			status_t			SetColumn(BColumn**);
 
 protected:
-								TAttributeColumn(BColumnTitle*);
+								TAttributeColumn(BColumn*, BColumnTitle*, TFindPanel*);
 	virtual	void				MessageReceived(BMessage*);
 
 private:
-			typedef BView __inherited;
-			friend class TFindPanel;
-
-private:
-			status_t			HandleColumnUpdate(float height);
+			status_t			HandleColumnResize(float height);
+			status_t			HandleColumnWidthResize();
+			status_t			HandleColumnMoved();
 
 protected:
+			BColumn*			fColumn;
 			BColumnTitle*		fColumnTitle;
 			BSize				fSize;
+			
+			TFindPanel* 		fFindPanel;
+			
+			typedef BView _inherited;
 };
 
 
-enum class ColumnCombinationMode {
-	AND,
-	OR
-};
-
-class TAttributeSearchColumn : public TAttributeColumn {
+class TAttributeSearchColumn : public TAttributeColumn
+{
 public:
-								TAttributeSearchColumn(BColumnTitle*, BView*, AttrType);
+	static	TAttributeSearchColumn*	CreateSearchColumnForAttributeType(const AttributeType,
+		BColumn*, BColumnTitle*, TFindPanel*);
+
 	virtual						~TAttributeSearchColumn();
 
-			void				SetColumnCombinationMode(ColumnCombinationMode);
-			status_t			GetColumnCombinationMode(ColumnCombinationMode*) const;
+	virtual	TAttributeSearchField*	CreateAttributeSearchField();
+			status_t			ResetStateForFirstSearchField();
 
-			status_t			AddSearchField(int32 index = -1);
-			status_t			AddSearchField(TAttributeSearchField* after);
+			status_t			AddSearchField(const int32 index = -1);
+			status_t			AddSearchField(const TAttributeSearchField* after);
 			status_t			RemoveSearchField(TAttributeSearchField*);
-			
-			status_t			GetRequiredHeight(BSize*) const;
-			
-			status_t			GetPredicateString(BString*) const;
-			
-			BMessage			ArchiveToMessage();
-			void				RestoreFromMessage(const BMessage*);
+
+			status_t			GetRequiredSize(BSize*) const;
+	virtual	status_t			GetPredicateString(BString*) const;
+
 protected:
+								TAttributeSearchColumn(BColumn*, BColumnTitle*, TFindPanel*);
 	virtual	void				MessageReceived(BMessage*);
 
 private:
-			status_t			ResizeBox(BSize);
-			status_t			GetBoxSize(BSize*) const;
+			status_t			SetBoxSize(const BSize);
 
-public:
-			AttrType			fAttrType;
-			ColumnCombinationMode	fCombinationMode;
-			BObjectList<TAttributeSearchField>* fSearchFields;
-			
+protected:
+			BObjectList<TAttributeSearchField>	fSearchFields;
+
 private:
-			BHandler*			fParent;
 			BGroupView*			fContainerView;
 			BBox*				fBox;
 
-			typedef TAttributeColumn __inherited;
-			friend class TAttributeColumn;
+			typedef TAttributeColumn _inherited;
 };
 
 
-class TDisabledSearchColumn : public TAttributeColumn {
+class TNumericAttributeSearchColumn : public TAttributeSearchColumn
+{
 public:
-								TDisabledSearchColumn(BColumnTitle*);
-								~TDisabledSearchColumn();
+								TNumericAttributeSearchColumn(BColumn*, BColumnTitle*,
+									TFindPanel*);
+	virtual						~TNumericAttributeSearchColumn();
+
+	virtual	TAttributeSearchField*	CreateAttributeSearchField();
+	virtual	status_t			GetPredicateString(BString*) const;
+};
+
+
+class TStringAttributeSearchColumn : public TAttributeSearchColumn
+{
+public:
+								TStringAttributeSearchColumn(BColumn*, BColumnTitle*,
+									TFindPanel*);
+	virtual						~TStringAttributeSearchColumn();
+	
+	virtual	TAttributeSearchField*	CreateAttributeSearchField();
+	virtual	status_t			GetPredicateString(BString*) const;
+};
+
+
+class TTemporalAttributeSearchColumn : public TAttributeSearchColumn
+{
+public:
+								TTemporalAttributeSearchColumn(BColumn*, BColumnTitle*,
+									TFindPanel*);
+	virtual						~TTemporalAttributeSearchColumn();
+	
+	virtual	TAttributeSearchField*	CreateAttributeSearchField();
+	virtual	status_t			GetPredicateString(BString*) const;
+};
+
+
+class TDisabledSearchColumn : public TAttributeColumn
+{
+public:
+								TDisabledSearchColumn(BColumn*, BColumnTitle*, TFindPanel*);
+	virtual						~TDisabledSearchColumn();
 
 private:
-			typedef TAttributeColumn __inherited;
+			typedef TAttributeColumn _inherited;
 };
 
 }
