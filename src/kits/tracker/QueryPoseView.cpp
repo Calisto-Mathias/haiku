@@ -164,6 +164,18 @@ BQueryPoseView::RemoveColumn(BColumn* column, bool runAlert)
 
 
 void
+BQueryPoseView::ScrollTo(BPoint where)
+{
+	_inherited::ScrollTo(where);
+	
+	BMessage* message = new BMessage(kScrollView);
+	message->AddFloat("x", where.x);
+	message->AddFloat("y", where.y);
+	BMessenger(fFindPanel).SendMessage(message);
+}
+
+
+void
 BQueryPoseView::MessageReceived(BMessage* message)
 {
 	switch (message->what) {

@@ -68,6 +68,8 @@ public:
 	virtual bool AddColumn(BColumn*, const BColumn* after = NULL);
 	virtual bool RemoveColumn(BColumn*, bool runAlert);
 
+	virtual void ScrollTo(BPoint where);
+
 protected:
 	virtual void RestoreState(AttributeStreamNode*);
 	virtual void RestoreState(const BMessage&);

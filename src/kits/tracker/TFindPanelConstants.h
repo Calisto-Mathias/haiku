@@ -102,6 +102,7 @@ static const uint32 kRefreshColumns ='Frfc';
 
 // Message static constants used by QueryPoseView.cpp
 static const uint32 kResetPauseButton = 'Frpb';
+static const uint32 kScrollView = 'Fscv';
 
 }
 

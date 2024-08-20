@@ -1,7 +1,6 @@
 #include "TFindPanel.h"
 
 
-#include <iostream>
 #include <string>
 
 #include <fs_attr.h>
@@ -84,9 +83,7 @@ TFindPanel::TFindPanel(BQueryContainerWindow* window, BQueryPoseView* poseView)
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	SetLowUIColor(ViewUIColor());
 	
-	status_t error;
-	if ((error = SetTemporaryFileHandle()) != B_OK)
-		std::cout<<strerror(error)<<std::endl;
+	SetTemporaryFileHandle();
 	BuildMimeTypeMenu();
 	BuildVolumeMenu();
 	BuildFindPanelLayout();
@@ -874,13 +871,11 @@ TFindPanel::GetPredicateString(BString* predicateString) const
 			continue;
 
 		// TODO: Add the other combinators
-		if (combinatorShouldBeAdded) {
+		if (combinatorShouldBeAdded)
 			predicateStringSetter.Append("&&");
-		} else {
-			std::cout<<"combinator variable set"<<std::endl;
+		else
 			combinatorShouldBeAdded = true;
-		}
-		
+
 		predicateStringSetter.Append("(").Append(columnPredicateString).Append(")");
 	}
 	
@@ -1002,7 +997,6 @@ TFindPanel::SaveQueryAsAttributesToFile()
 	if ((error = GetPredicateString(&predicateString)) != B_OK)
 		return error;
 
-	std::cout<<predicateString<<std::endl;
 	BString mimeTypeString;
 	if ((error = GetMimeTypeString(&mimeTypeString)) != B_OK)
 		mimeTypeString = "";
@@ -1011,8 +1005,6 @@ TFindPanel::SaveQueryAsAttributesToFile()
 		predicateString.Truncate(predicateString.Length() - 2);
 
 	ProcessPredicateString(&predicateString, &mimeTypeString);
-	std::cout<<predicateString<<std::endl;
-
 	if ((error = WritePredicateStringToFile(&predicateString)) != B_OK)
 		return error;
 
@@ -1218,6 +1210,16 @@ TFindPanel::MessageReceived(BMessage* message)
 
 				SetCurrentMimeType(item);
 			}
+			break;
+		}
+
+		case kScrollView:
+		{
+			float x, y;
+			if (message->FindFloat("x", &x) != B_OK && message->FindFloat("y", &y) != B_OK)
+				break;
+			BPoint where(x, y);
+			fColumnsContainer->ScrollTo(where);
 			break;
 		}
 

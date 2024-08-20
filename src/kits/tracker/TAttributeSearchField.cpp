@@ -1,7 +1,6 @@
 #include "TAttributeSearchField.h"
 
 
-#include <iostream>
 #include <fs_attr.h>
 
 #include <Button.h>
@@ -146,8 +145,6 @@ TAttributeSearchField::HandleMenuOptionClicked(BMenuItem* item)
 		return B_BAD_VALUE;
 	
 	bool isCombinationOperator = IsCombinationOperatorMenuItem(item);
-	std::cout<<isCombinationOperator<<std::endl;
-	
 	int32 startingIndex = isCombinationOperator ? 0 : combinationOperatorsLength + 1;
 	int32 endingIndex = isCombinationOperator ? combinationOperatorsLength + 1: menu->CountItems();
 	
