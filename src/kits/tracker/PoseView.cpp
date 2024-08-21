@@ -35,7 +35,6 @@ All rights reserved.
 
 #include "PoseView.h"
 
-#include <iostream>
 #include <algorithm>
 #include <functional>
 #include <map>
@@ -350,7 +349,7 @@ BPoseView::InitCommon()
 
 	// Create the TitleView and CountView
 	BQueryPoseView* queryPoseView = dynamic_cast<BQueryPoseView*>(this);
-	if (queryPoseView != NULL)
+	if (queryPoseView != NULL) 
 		fTitleView = new BQueryTitleView(queryPoseView);
 	else
 		fTitleView = new BTitleView(this);

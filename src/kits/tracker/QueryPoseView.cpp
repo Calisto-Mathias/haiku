@@ -35,7 +35,6 @@ All rights reserved.
 
 #include "QueryPoseView.h"
 
-#include <iostream>
 #include <new>
 
 #include <Catalog.h>

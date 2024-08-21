@@ -91,6 +91,8 @@ public:
 protected:
 	void MouseMoved(BPoint, uint32, const BMessage*);
 	
+	virtual BColumnTitle* CreateColumnTitle(BColumn*);
+	
 	virtual ColumnResizeState* CreateColumnResizeState(BTitleView* titleView, BColumnTitle*,
 		BPoint, bigtime_t);
 
@@ -121,6 +123,9 @@ public:
 	
 	virtual ColumnResizeState* CreateColumnResizeState(BTitleView*, BColumnTitle*,
 		BPoint, bigtime_t);
+
+protected:
+	virtual BColumnTitle* CreateColumnTitle(BColumn*);
 };
 
 
@@ -136,11 +141,23 @@ public:
 
 	bool InColumnResizeArea(BPoint) const;
 
-private:
+protected:
 	BColumn* fColumn;
 	BTitleView* fParent;
 
 	friend class ColumnResizeState;
+};
+
+
+class BQueryColumnTitle : public BColumnTitle
+{
+public:
+	BQueryColumnTitle(BQueryTitleView*, BColumn*);
+	~BQueryColumnTitle() {};
+	
+	virtual void Draw(BView*, bool pressed = false);
+	
+	typedef BColumnTitle _inherited;
 };
 
 

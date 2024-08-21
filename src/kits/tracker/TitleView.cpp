@@ -149,9 +149,17 @@ BTitleView::Reset()
 		BColumn* column = fPoseView->ColumnAt(index);
 		if (!column)
 			break;
-		fTitleList.AddItem(new BColumnTitle(this, column));
+		
+		fTitleList.AddItem(CreateColumnTitle(column));
 	}
 	Invalidate();
+}
+
+
+BColumnTitle*
+BTitleView::CreateColumnTitle(BColumn* column)
+{
+	return new BColumnTitle(this, column);
 }
 
 
@@ -172,7 +180,11 @@ BTitleView::AddTitle(BColumn* column, const BColumn* after)
 	} else
 		index = count;
 
-	fTitleList.AddItem(new BColumnTitle(this, column), index);
+	BQueryTitleView* queryTitleView = dynamic_cast<BQueryTitleView*>(this);
+	if (queryTitleView == NULL)
+		fTitleList.AddItem(new BColumnTitle(this, column), index);
+	else
+		fTitleList.AddItem(new BQueryColumnTitle(queryTitleView, column), index);
 	Invalidate();
 }
 
@@ -455,6 +467,7 @@ BQueryTitleView::BQueryTitleView(BQueryPoseView* poseView)
 	:
 	BTitleView(poseView)
 {
+	Reset();
 }
 
 
@@ -468,6 +481,13 @@ BQueryTitleView::CreateColumnResizeState(BTitleView* titleView, BColumnTitle* co
 	BPoint where, bigtime_t pastClickTime)
 {
 	return new QueryColumnResizeState(titleView, columnTitle, where, pastClickTime);
+}
+
+
+BColumnTitle*
+BQueryTitleView::CreateColumnTitle(BColumn* column)
+{
+	return new BQueryColumnTitle(this, column);
 }
 
 //	#pragma mark - BColumnTitle
@@ -590,6 +610,30 @@ BColumnTitle::Draw(BView* view, bool pressed)
 	view->StrokeLine(bounds.RightTop(), bounds.RightBottom());
 }
 
+
+BQueryColumnTitle::BQueryColumnTitle(BQueryTitleView* titleView, BColumn* column)
+	:
+	BColumnTitle(titleView, column)
+{
+}
+
+
+void
+BQueryColumnTitle::Draw(BView* view, bool pressed)
+{
+	_inherited::Draw(view, pressed);
+	
+	BRect bounds = Bounds();
+	if (bounds.Width()< kMinColumnWidth) {
+		float temporary = bounds.right;
+		BQueryPoseView* queryPoseView = dynamic_cast<BQueryPoseView*>(fParent->PoseView());
+		queryPoseView->ResizeColumn(fColumn, kMinColumnWidth, &temporary, _DrawLine, _UndrawLine);
+		
+		bounds = fParent->Bounds();
+		bounds.left = fColumn->Offset();
+		fParent->Draw(bounds, true, false);
+	}
+}
 
 //	#pragma mark - ColumnTrackState
 
