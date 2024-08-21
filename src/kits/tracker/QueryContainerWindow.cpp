@@ -44,6 +44,7 @@ All rights reserved.
 
 #include "Attributes.h"
 #include "Commands.h"
+#include "TFindPanel.h"
 #include "QueryContainerWindow.h"
 #include "QueryPoseView.h"
 
@@ -81,6 +82,11 @@ void
 BQueryContainerWindow::CreatePoseView(Model* model)
 {
 	fPoseView = NewPoseView(model, kListMode);
+
+	PoseView()->fFindPanel = new TFindPanel(this, PoseView());
+	fFindPanelContainer = new BGroupView(B_VERTICAL, 0.0f);
+	fFindPanelContainer->GroupLayout()->AddView(PoseView()->fFindPanel);
+	fRootLayout->AddView(1, fFindPanelContainer);
 
 	fBorderedView->GroupLayout()->AddView(fPoseView);
 	fBorderedView->EnableBorderHighlight(false);

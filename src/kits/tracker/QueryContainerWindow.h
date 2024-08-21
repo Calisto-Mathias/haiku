@@ -66,6 +66,8 @@ protected:
 	virtual	void				SetupDefaultState();
 
 private:
+			BGroupView*			fFindPanelContainer;
+
 	typedef BContainerWindow	_inherited;
 };
 
