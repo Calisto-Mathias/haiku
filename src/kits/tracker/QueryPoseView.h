@@ -37,6 +37,7 @@ All rights reserved.
 
 #include "EntryIterator.h"
 #include "PoseView.h"
+#include "TFindPanel.h"
 
 
 class BQuery;
@@ -64,6 +65,11 @@ public:
 		// date == today - RestartQuery gets called on midnight to update
 		// the contents
 
+	virtual bool AddColumn(BColumn*, const BColumn* after = NULL);
+	virtual bool RemoveColumn(BColumn*, bool runAlert);
+
+	virtual void ScrollTo(BPoint where);
+
 protected:
 	virtual void RestoreState(AttributeStreamNode*);
 	virtual void RestoreState(const BMessage&);
@@ -75,6 +81,10 @@ protected:
 	virtual EntryListBase* InitDirentIterator(const entry_ref*);
 	virtual uint32 WatchNewNodeMask();
 	virtual void AddPosesCompleted();
+
+	virtual BTitleView* CreateTitleView();
+public:
+	TFindPanel* fFindPanel;
 
 private:
 		// list of all the queries this PoseView represents

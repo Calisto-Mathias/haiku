@@ -81,6 +81,10 @@ for architectureObject in [ MultiArchSubDirSetup ] {
 			Tests.cpp
 			TextWidget.cpp
 			Thumbnails.cpp
+			TAttributeColumn.cpp
+			TAttributeSearchField.cpp
+			TFindPanel.cpp
+			TPopUpTextControl.cpp
 			TitleView.cpp
 			Tracker.cpp
 			TrackerInitialState.cpp

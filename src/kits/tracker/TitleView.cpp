@@ -45,6 +45,7 @@ All rights reserved.
 #include <PopUpMenu.h>
 #include <Window.h>
 
+#include <iostream>
 #include <algorithm>
 
 #include <stdio.h>
@@ -53,6 +54,9 @@ All rights reserved.
 #include "Commands.h"
 #include "ContainerWindow.h"
 #include "PoseView.h"
+#include "QueryPoseView.h"
+#include "TFindPanel.h"
+#include "TFindPanelConstants.h"
 #include "Utilities.h"
 
 
@@ -145,9 +149,17 @@ BTitleView::Reset()
 		BColumn* column = fPoseView->ColumnAt(index);
 		if (!column)
 			break;
-		fTitleList.AddItem(new BColumnTitle(this, column));
+		
+		fTitleList.AddItem(CreateColumnTitle(column));
 	}
 	Invalidate();
+}
+
+
+BColumnTitle*
+BTitleView::CreateColumnTitle(BColumn* column)
+{
+	return new BColumnTitle(this, column);
 }
 
 
@@ -168,7 +180,11 @@ BTitleView::AddTitle(BColumn* column, const BColumn* after)
 	} else
 		index = count;
 
-	fTitleList.AddItem(new BColumnTitle(this, column), index);
+	BQueryTitleView* queryTitleView = dynamic_cast<BQueryTitleView*>(this);
+	if (queryTitleView == NULL)
+		fTitleList.AddItem(new BColumnTitle(this, column), index);
+	else
+		fTitleList.AddItem(new BQueryColumnTitle(queryTitleView, column), index);
 	Invalidate();
 }
 
@@ -343,7 +359,7 @@ BTitleView::MouseDown(BPoint where)
 
 	// track the mouse
 	if (resizedTitle) {
-		fTrackingState = new ColumnResizeState(this, resizedTitle, where,
+		fTrackingState = CreateColumnResizeState(this, resizedTitle, where,
 			system_time() + doubleClickSpeed);
 	} else {
 		fTrackingState = new ColumnDragState(this, title, where,
@@ -438,6 +454,41 @@ BTitleView::FindColumnTitle(const BColumn* column) const
 	return NULL;
 }
 
+
+ColumnResizeState*
+BTitleView::CreateColumnResizeState(BTitleView* titleView, BColumnTitle* columnTitle,
+	BPoint where, bigtime_t lastClickTime)
+{
+	return new ColumnResizeState(titleView, columnTitle, where, lastClickTime);
+}
+
+
+BQueryTitleView::BQueryTitleView(BQueryPoseView* poseView)
+	:
+	BTitleView(poseView)
+{
+	Reset();
+}
+
+
+BQueryTitleView::~BQueryTitleView()
+{
+}
+
+
+ColumnResizeState*
+BQueryTitleView::CreateColumnResizeState(BTitleView* titleView, BColumnTitle* columnTitle,
+	BPoint where, bigtime_t pastClickTime)
+{
+	return new QueryColumnResizeState(titleView, columnTitle, where, pastClickTime);
+}
+
+
+BColumnTitle*
+BQueryTitleView::CreateColumnTitle(BColumn* column)
+{
+	return new BQueryColumnTitle(this, column);
+}
 
 //	#pragma mark - BColumnTitle
 
@@ -559,6 +610,30 @@ BColumnTitle::Draw(BView* view, bool pressed)
 	view->StrokeLine(bounds.RightTop(), bounds.RightBottom());
 }
 
+
+BQueryColumnTitle::BQueryColumnTitle(BQueryTitleView* titleView, BColumn* column)
+	:
+	BColumnTitle(titleView, column)
+{
+}
+
+
+void
+BQueryColumnTitle::Draw(BView* view, bool pressed)
+{
+	_inherited::Draw(view, pressed);
+	
+	BRect bounds = Bounds();
+	if (bounds.Width()< kMinColumnWidth) {
+		float temporary = bounds.right;
+		BQueryPoseView* queryPoseView = dynamic_cast<BQueryPoseView*>(fParent->PoseView());
+		queryPoseView->ResizeColumn(fColumn, kMinColumnWidth, &temporary, _DrawLine, _UndrawLine);
+		
+		bounds = fParent->Bounds();
+		bounds.left = fColumn->Offset();
+		fParent->Draw(bounds, true, false);
+	}
+}
 
 //	#pragma mark - ColumnTrackState
 
@@ -699,6 +774,28 @@ ColumnResizeState::UndrawLine()
 }
 
 
+QueryColumnResizeState::QueryColumnResizeState(BTitleView* titleView, BColumnTitle* columnTitle,
+	BPoint where, bigtime_t lastClickTime)
+	:
+	ColumnResizeState(titleView, columnTitle, where, lastClickTime)
+{
+}
+
+
+QueryColumnResizeState::~QueryColumnResizeState()
+{
+}
+
+
+void
+QueryColumnResizeState::Moved(BPoint where, uint32 buttons)
+{
+	_inherited::Moved(where, buttons);
+	BMessenger messenger(dynamic_cast<BQueryPoseView*>(fTitleView->PoseView())->fFindPanel);
+	messenger.SendMessage(new BMessage(kRefreshColumns));
+}
+
+
 //	#pragma mark - ColumnDragState
 
 
@@ -785,6 +882,11 @@ ColumnDragState::Moved(BPoint where, uint32)
 			// swap the columns
 			fTitleView->PoseView()->MoveColumnTo(column, overTitle->Column());
 			// re-grab the title object looking it up by the column
+			
+			BQueryPoseView* queryPoseView = dynamic_cast<BQueryPoseView*>(fTitleView->PoseView());
+			if (queryPoseView != NULL)
+				BMessenger(queryPoseView->fFindPanel).SendMessage(kMoveColumn);
+			
 			fTitle = fTitleView->FindColumnTitle(column);
 			// recalc initialMouseTrackOffset
 			fInitialMouseTrackOffset += fTitle->Bounds().left;

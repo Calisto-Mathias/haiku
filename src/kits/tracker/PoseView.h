@@ -225,8 +225,8 @@ public:
 
 	// column handling
 	void ColumnRedraw(BRect updateRect);
-	bool AddColumn(BColumn*, const BColumn* after = NULL);
-	bool RemoveColumn(BColumn* column, bool runAlert);
+	virtual bool AddColumn(BColumn*, const BColumn* after = NULL);
+	virtual bool RemoveColumn(BColumn* column, bool runAlert);
 	void MoveColumnTo(BColumn* src, BColumn* dest);
 	bool ResizeColumnToWidest(BColumn* column);
 	BPoint ResizeColumn(BColumn*, float, float* lastLineDrawPos = NULL,
@@ -675,6 +675,7 @@ protected:
 
 	void ExcludeTrashFromSelection();
 
+	virtual BTitleView* CreateTitleView();
 private:
 	void DrawOpenAnimation(BRect);
 	void ApplyBackgroundColor();
@@ -726,10 +727,10 @@ protected:
 
 	PendingNodeMonitorCache pendingNodeMonitorCache;
 
+	Model* fModel;
 private:
 	TScrollBar* fHScrollBar;
 	BScrollBar* fVScrollBar;
-	Model* fModel;
 	BPose* fActivePose;
 	BRect fExtent;
 	// the following should probably be just member lists, not pointers

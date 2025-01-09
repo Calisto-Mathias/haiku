@@ -54,6 +54,7 @@ All rights reserved.
 #include "FSUtils.h"
 #include "MimeTypeList.h"
 #include "MimeTypes.h"
+#include "TFindPanelConstants.h"
 #include "Tracker.h"
 
 #include <fs_attr.h>
@@ -92,6 +93,8 @@ BQueryPoseView::~BQueryPoseView()
 {
 	delete fQueryListContainer;
 }
+
+
 
 
 bool
@@ -133,6 +136,44 @@ QueryRefFilter::PassThroughDirectoryFilters(const entry_ref* ref) const
 }
 
 
+bool
+BQueryPoseView::AddColumn(BColumn* column, const BColumn* after)
+{
+	bool state = _inherited::AddColumn(column, after);
+	if (state) {
+		BMessage* message = new BMessage(kAddColumn);
+		message->AddPointer("pointer", column);
+		BMessenger(fFindPanel).SendMessage(message);
+	}
+	return state;
+}
+
+
+bool
+BQueryPoseView::RemoveColumn(BColumn* column, bool runAlert)
+{
+	bool status = _inherited::RemoveColumn(column, runAlert);
+	if (status) {
+		BMessage* message = new BMessage(kRemoveColumn);
+		if ((message->AddPointer("pointer", column)) == B_OK)
+			BMessenger(fFindPanel).SendMessage(message);
+	}
+	return status;
+}
+
+
+void
+BQueryPoseView::ScrollTo(BPoint where)
+{
+	_inherited::ScrollTo(where);
+	
+	BMessage* message = new BMessage(kScrollView);
+	message->AddFloat("x", where.x);
+	message->AddFloat("y", where.y);
+	BMessenger(fFindPanel).SendMessage(message);
+}
+
+
 void
 BQueryPoseView::MessageReceived(BMessage* message)
 {
@@ -141,6 +182,26 @@ BQueryPoseView::MessageReceived(BMessage* message)
 		{
 			// poses have always to be updated for the query view
 			UpdatePosesClipboardModeFromClipboard(message);
+			break;
+		}
+
+		case kPauseSearchResults:
+		{
+			fAddPosesThreads.clear();
+			HideBarberPole();
+			break;
+		}
+
+		case kRefreshQueryResults:
+		{
+			entry_ref ref;
+			if (message->FindRef("refs", &ref) != B_OK)
+				break;
+			
+			delete fModel;
+			fModel = new Model(&ref);
+			fAddPosesThreads.clear();
+			_inherited::Refresh();
 			break;
 		}
 
@@ -247,6 +308,15 @@ BQueryPoseView::AddPosesCompleted()
 	}
 
 	_inherited::AddPosesCompleted();
+	
+	BMessenger(fFindPanel).SendMessage(kResetPauseButton);
+}
+
+
+BTitleView*
+BQueryPoseView::CreateTitleView()
+{
+	return dynamic_cast<BTitleView*>(new BQueryTitleView(this));
 }
 
 
